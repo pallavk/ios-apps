@@ -108,6 +108,14 @@ private struct ScanView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let diagnostics = draft.ocrDiagnostics {
+                Section("OCR diagnostics") {
+                    ForEach(diagnostics.displayRows, id: \.0) { row in
+                        LabeledContent(row.0, value: row.1)
+                    }
+                }
+            }
+
             Section {
                 Button {
                     saveCaptureDraft()
@@ -273,8 +281,11 @@ private struct ScanView: View {
         draft.imageData = imageData
         draft.imageReference = imageReference
         draft.savedCaptureDraftID = nil
+        draft.ocrDiagnostics = nil
         do {
-            draft.ocrText = try await OCRScanner.text(from: image)
+            let result = try await OCRScanner.scan(image: image)
+            draft.ocrText = result.text
+            draft.ocrDiagnostics = result.diagnostics
         } catch {
             draft.errorMessage = error.localizedDescription
         }

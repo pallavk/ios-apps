@@ -67,6 +67,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 
 struct AnalysisDraft {
     var ocrText = ""
+    var ocrDiagnostics: OCRDiagnostics?
     var summary = "Analyze a corrected OCR label to see nutrition, ingredients, and warnings."
     var isLoading = false
     var errorMessage: String?
@@ -74,6 +75,27 @@ struct AnalysisDraft {
     var imageData: Data?
     var savedCaptureDraftID: UUID?
     var analysis: LabelAnalysis?
+}
+
+struct OCRDiagnostics {
+    var engine: String
+    var documentCount: Int = 0
+    var tableCount: Int = 0
+    var tableRowCount: Int = 0
+    var fallbackReason: String?
+
+    var displayRows: [(String, String)] {
+        var rows = [
+            ("Engine", engine),
+            ("Documents", "\(documentCount)"),
+            ("Tables", "\(tableCount)"),
+            ("Table rows", "\(tableRowCount)"),
+        ]
+        if let fallbackReason {
+            rows.append(("Fallback", fallbackReason))
+        }
+        return rows
+    }
 }
 
 enum ScanTitleFormatter {

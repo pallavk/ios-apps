@@ -47,17 +47,36 @@ struct CameraCaptureView: UIViewControllerRepresentable {
 }
 
 enum OCRScanner {
+    struct ScanResult {
+        var text: String
+        var diagnostics: OCRDiagnostics
+    }
+
     static func text(from image: UIImage) async throws -> String {
+        try await scan(image: image).text
+    }
+
+    static func scan(image: UIImage) async throws -> ScanResult {
         guard let cgImage = image.cgImage else {
             throw OCRScannerError.invalidImage
         }
 
-        if #available(iOS 26.0, *),
-           let documentText = try? await documentText(from: cgImage),
-           !documentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return documentText
+        if #available(iOS 26.0, *) {
+            do {
+                let result = try await documentText(from: cgImage)
+                if !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return result
+                }
+                return try await legacyText(from: cgImage, fallbackReason: "Vision document OCR returned no text.")
+            } catch {
+                return try await legacyText(from: cgImage, fallbackReason: error.localizedDescription)
+            }
         }
 
+        return try await legacyText(from: cgImage, fallbackReason: "iOS 26 Vision document OCR is unavailable.")
+    }
+
+    private static func legacyText(from cgImage: CGImage, fallbackReason: String?) async throws -> ScanResult {
         return try await withCheckedThrowingContinuation { continuation in
             let request = VNRecognizeTextRequest { request, error in
                 if let error {
@@ -68,7 +87,15 @@ enum OCRScanner {
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
                 let lines = observations.compactMap(OCRTextLine.init(observation:))
                 let text = OCRLayoutFormatter.formattedText(from: lines)
-                continuation.resume(returning: text)
+                continuation.resume(
+                    returning: ScanResult(
+                        text: text,
+                        diagnostics: OCRDiagnostics(
+                            engine: "VNRecognizeTextRequest",
+                            fallbackReason: fallbackReason
+                        )
+                    )
+                )
             }
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
@@ -83,14 +110,14 @@ enum OCRScanner {
     }
 
     @available(iOS 26.0, *)
-    private static func documentText(from cgImage: CGImage) async throws -> String {
+    private static func documentText(from cgImage: CGImage) async throws -> ScanResult {
         var request = RecognizeDocumentsRequest()
         request.textRecognitionOptions.automaticallyDetectLanguage = true
         request.textRecognitionOptions.useLanguageCorrection = true
         request.textRecognitionOptions.maximumCandidateCount = 1
 
         let observations = try await ImageRequestHandler(cgImage).perform(request)
-        return OCRDocumentFormatter.formattedText(from: observations)
+        return OCRDocumentFormatter.formattedResult(from: observations)
     }
 }
 
@@ -161,6 +188,28 @@ enum OCRLayoutFormatter {
 @available(iOS 26.0, *)
 enum OCRDocumentFormatter {
     static func formattedText(from observations: [DocumentObservation]) -> String {
+        formattedResult(from: observations).text
+    }
+
+    static func formattedResult(from observations: [DocumentObservation]) -> OCRScanner.ScanResult {
+        let tableCount = observations.reduce(0) { $0 + $1.document.tables.count }
+        let tableRowCount = observations.reduce(0) { total, observation in
+            total + observation.document.tables.reduce(0) { $0 + $1.rows.count }
+        }
+
+        let text = formattedTextOnly(from: observations)
+        return OCRScanner.ScanResult(
+            text: text,
+            diagnostics: OCRDiagnostics(
+                engine: "RecognizeDocumentsRequest",
+                documentCount: observations.count,
+                tableCount: tableCount,
+                tableRowCount: tableRowCount
+            )
+        )
+    }
+
+    private static func formattedTextOnly(from observations: [DocumentObservation]) -> String {
         observations
             .map { formattedDocument($0.document) }
             .filter { !$0.isEmpty }
