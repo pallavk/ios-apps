@@ -9,6 +9,7 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
   - [x] `backend/nutriscan-api/`
   - [x] `docs/plans/`
 - [x] Define branch strategy (`main`, short-lived feature branches).
+- [x] Add decision log for product and technical tradeoffs.
 - [x] Add issue templates for bug/feature/test fixture requests.
 
 ## 1) iOS App Skeleton
