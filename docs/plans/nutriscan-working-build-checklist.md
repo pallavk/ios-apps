@@ -22,6 +22,7 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
 - [x] Add photo picker flow (PhotosUI).
 - [x] Add camera capture flow (VisionKit/AVFoundation).
 - [x] Integrate Apple Vision OCR extraction.
+  - [x] Add iOS 26 Vision document/table recognition attempt with legacy text OCR fallback.
 - [x] Render raw OCR output in editable text view.
 - [x] Persist OCR text + image reference locally.
   - [x] Save OCR/photo capture drafts before backend analysis.

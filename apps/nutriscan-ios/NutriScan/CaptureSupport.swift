@@ -52,6 +52,12 @@ enum OCRScanner {
             throw OCRScannerError.invalidImage
         }
 
+        if #available(iOS 26.0, *),
+           let documentText = try? await documentText(from: cgImage),
+           !documentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return documentText
+        }
+
         return try await withCheckedThrowingContinuation { continuation in
             let request = VNRecognizeTextRequest { request, error in
                 if let error {
@@ -74,6 +80,17 @@ enum OCRScanner {
                 continuation.resume(throwing: error)
             }
         }
+    }
+
+    @available(iOS 26.0, *)
+    private static func documentText(from cgImage: CGImage) async throws -> String {
+        var request = RecognizeDocumentsRequest()
+        request.textRecognitionOptions.automaticallyDetectLanguage = true
+        request.textRecognitionOptions.useLanguageCorrection = true
+        request.textRecognitionOptions.maximumCandidateCount = 1
+
+        let observations = try await ImageRequestHandler(cgImage).perform(request)
+        return OCRDocumentFormatter.formattedText(from: observations)
     }
 }
 
@@ -138,6 +155,48 @@ enum OCRLayoutFormatter {
             return sorted.map(\.text).joined(separator: " | ")
         }
         return sorted.map(\.text).joined(separator: " ")
+    }
+}
+
+@available(iOS 26.0, *)
+enum OCRDocumentFormatter {
+    static func formattedText(from observations: [DocumentObservation]) -> String {
+        observations
+            .map { formattedDocument($0.document) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+    }
+
+    private static func formattedDocument(_ document: DocumentObservation.Container) -> String {
+        let transcript = document.text.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tables = document.tables
+            .map(formatTable)
+            .filter { !$0.isEmpty }
+
+        if tables.isEmpty {
+            return transcript
+        }
+
+        return ([transcript] + tables)
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    private static func formatTable(_ table: DocumentObservation.Container.Table) -> String {
+        table.rows
+            .map { row in
+                row.map { text(from: $0.content) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " | ")
+            }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    private static func text(from container: DocumentObservation.Container) -> String {
+        container.text.transcript
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
     }
 }
 

@@ -78,10 +78,10 @@ This log records product and technical decisions made while building the NutriSc
 ### 2026-05-10: OCR table handling strategy
 
 - **Status:** Trial
-- **Decision:** Use Apple's on-device Vision OCR with bounding-box-aware layout formatting for now, preserving table-like rows with pipe-separated cells when Vision detects multiple text items on a row.
-- **Rationale:** Nutrition labels often use tables, and plain OCR text loses row/column relationships. Bounding-box formatting is cheap, private, runs on device, and improves fixture quality without adding cloud cost or image upload.
+- **Decision:** Use Apple's on-device Vision document recognition on iOS 26+ first, including table rows from `DocumentObservation.Container.Table`, then fall back to `VNRecognizeTextRequest` with bounding-box-aware layout formatting on older OS versions or document-recognition failures.
+- **Rationale:** Nutrition labels often use tables, and plain OCR text loses row/column relationships. The iOS 26 document API is local and exposes table containers, while the legacy OCR fallback keeps the app working on older devices.
 - **Options considered:** Apple Vision table/document extraction, LlamaParse or similar cloud parsers, LiteParse/local document parsing, and an on-device or fine-tuned small vision-language model such as Gemma.
-- **Follow-up:** After collecting 20-50 real label fixtures, compare parser failures. Consider an opt-in cloud parser for hard table-heavy labels if local OCR remains insufficient. Treat on-device/fine-tuned vision models as a later research track after we have a larger evaluated corpus.
+- **Follow-up:** After collecting 20-50 real label fixtures, compare document-recognition output against legacy OCR. Consider an opt-in cloud parser for hard table-heavy labels if local OCR remains insufficient. Treat on-device/fine-tuned vision models as a later research track after we have a larger evaluated corpus.
 
 ### 2026-05-10: Physical-device verification
 
