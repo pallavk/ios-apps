@@ -97,6 +97,7 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
 
 ## 11) Launch-Readiness for Internal Beta
 - [ ] Smoke test on physical iPhone devices with varied lighting.
+  - [x] Build, install, launch, and screenshot smoke test on iPhone 17 simulator.
 - [ ] Validate top allergy scenarios against physical labels.
 - [ ] Review legal/safety copy for non-medical positioning.
 - [ ] Freeze MVP scope and create post-MVP backlog (barcode, sync, Android).
