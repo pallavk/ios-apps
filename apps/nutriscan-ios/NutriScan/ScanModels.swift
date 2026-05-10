@@ -72,6 +72,7 @@ struct AnalysisDraft {
     var errorMessage: String?
     var imageReference: String?
     var imageData: Data?
+    var savedCaptureDraftID: UUID?
     var analysis: LabelAnalysis?
 }
 

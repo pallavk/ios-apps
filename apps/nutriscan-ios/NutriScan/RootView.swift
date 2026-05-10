@@ -1,6 +1,7 @@
 import PhotosUI
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     @State private var selectedTab: AppTab = .home
@@ -111,9 +112,14 @@ private struct ScanView: View {
                 Button {
                     saveCaptureDraft()
                 } label: {
-                    Label("Save capture draft", systemImage: "tray.and.arrow.down")
+                    Label(captureDraftActionTitle, systemImage: captureDraftActionIcon)
                 }
                 .disabled(!draft.hasCollectableContent)
+
+                if draft.savedCaptureDraftID != nil {
+                    Label("Draft saved to History", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
 
                 Button {
                     Task {
@@ -127,7 +133,8 @@ private struct ScanView: View {
 
             if let saveMessage {
                 Section("Saved") {
-                    Text(saveMessage)
+                    Label(saveMessage, systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
                     Button {
                         selectedTab = .history
                     } label: {
@@ -181,18 +188,37 @@ private struct ScanView: View {
         }
     }
 
+    private var captureDraftActionTitle: String {
+        draft.savedCaptureDraftID == nil ? "Save capture draft" : "Update capture draft"
+    }
+
+    private var captureDraftActionIcon: String {
+        draft.savedCaptureDraftID == nil ? "tray.and.arrow.down" : "arrow.triangle.2.circlepath"
+    }
+
     private func saveCaptureDraft() {
         do {
-            let imageFileName = try storeDraftImageIfAvailable()
-            let scan = SavedScan(
-                title: "Label capture draft",
-                ocrText: draft.ocrText,
-                imageReference: draft.imageReference,
-                imageFileName: imageFileName,
-                summary: "Saved OCR/photo draft for fixture review. Analysis has not been run."
-            )
-            modelContext.insert(scan)
-            saveMessage = "Capture draft saved locally."
+            if let scan = try existingCaptureDraft() {
+                scan.ocrText = draft.ocrText
+                scan.imageReference = draft.imageReference
+                scan.imageFileName = try storeDraftImageIfAvailable(existingFileName: scan.imageFileName)
+                scan.summary = "Saved OCR/photo draft for fixture review. Analysis has not been run."
+                saveMessage = "Capture draft updated locally."
+            } else {
+                let scanID = UUID()
+                let imageFileName = try storeDraftImageIfAvailable(existingFileName: nil)
+                let scan = SavedScan(
+                    id: scanID,
+                    title: "Label capture draft",
+                    ocrText: draft.ocrText,
+                    imageReference: draft.imageReference,
+                    imageFileName: imageFileName,
+                    summary: "Saved OCR/photo draft for fixture review. Analysis has not been run."
+                )
+                modelContext.insert(scan)
+                draft.savedCaptureDraftID = scanID
+                saveMessage = "Capture draft saved locally."
+            }
         } catch {
             draft.errorMessage = "The capture draft could not be saved: \(error.localizedDescription)"
         }
@@ -228,7 +254,11 @@ private struct ScanView: View {
                 draft.isLoading = false
                 return
             }
-            await recognize(image: image, imageData: data, imageReference: item.itemIdentifier)
+            await recognize(
+                image: image,
+                imageData: image.jpegData(compressionQuality: 0.9),
+                imageReference: item.itemIdentifier
+            )
         } catch {
             draft.errorMessage = error.localizedDescription
             draft.isLoading = false
@@ -242,6 +272,7 @@ private struct ScanView: View {
         saveMessage = nil
         draft.imageData = imageData
         draft.imageReference = imageReference
+        draft.savedCaptureDraftID = nil
         do {
             draft.ocrText = try await OCRScanner.text(from: image)
         } catch {
@@ -250,7 +281,21 @@ private struct ScanView: View {
         draft.isLoading = false
     }
 
-    private func storeDraftImageIfAvailable() throws -> String? {
+    private func existingCaptureDraft() throws -> SavedScan? {
+        guard let savedCaptureDraftID = draft.savedCaptureDraftID else { return nil }
+        var descriptor = FetchDescriptor<SavedScan>(
+            predicate: #Predicate { scan in
+                scan.id == savedCaptureDraftID
+            }
+        )
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).first
+    }
+
+    private func storeDraftImageIfAvailable(existingFileName: String?) throws -> String? {
+        if let existingFileName {
+            return existingFileName
+        }
         guard let imageData = draft.imageData else { return nil }
         return try LabelImageStore.saveJPEGData(imageData)
     }
@@ -512,11 +557,30 @@ private struct HistoryView: View {
 private struct SavedScanDetailView: View {
     let scan: SavedScan
     @State private var ocrExportURL: URL?
+    @State private var savedImage: UIImage?
 
     var body: some View {
         List {
             Section("Summary") {
                 Text(scan.summary)
+            }
+
+            if let savedImage {
+                Section("Label photo") {
+                    Image(uiImage: savedImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 360)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            } else if scan.imageFileName != nil {
+                Section("Label photo") {
+                    ContentUnavailableView(
+                        "Photo unavailable",
+                        systemImage: "photo",
+                        description: Text("The saved image file could not be loaded.")
+                    )
+                }
             }
 
             Section("OCR text") {
@@ -551,7 +615,17 @@ private struct SavedScanDetailView: View {
         .navigationTitle(scan.title)
         .task {
             ocrExportURL = try? LabelExportStore.writeOCRText(for: scan)
+            savedImage = loadSavedImage()
         }
+    }
+
+    private func loadSavedImage() -> UIImage? {
+        guard let imageURL = scan.storedImageURL,
+              let data = try? Data(contentsOf: imageURL)
+        else {
+            return nil
+        }
+        return UIImage(data: data)
     }
 }
 
