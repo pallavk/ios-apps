@@ -1,40 +1,90 @@
 import re
+from dataclasses import dataclass
+from re import Match
 
 from .schemas import IngredientAnalysis, NutritionFacts
 
 
+@dataclass(frozen=True)
+class LineMatch:
+    line: str
+    match: Match[str]
+
+
 def confidence_for(text: str, region_hint: str) -> dict[str, float | list[str]]:
+    text = normalize_ocr_text(text)
+    effective_region = detect_region(text, region_hint)
     notes: list[str] = []
     parser_confidence = 0.5
 
-    if region_hint == "sg" and re.search(r"\bnutrition information\b|\benergy\s+\d", text, re.IGNORECASE):
+    if effective_region == "sg" and re.search(r"\bnutrition information\b|\benergy\s+\d", text, re.IGNORECASE):
         notes.append("sg_nutrition_panel")
         parser_confidence = 0.75
-    elif region_hint == "us" and re.search(r"\bnutrition facts\b", text, re.IGNORECASE):
+    elif effective_region == "us" and re.search(r"\bnutrition facts\b", text, re.IGNORECASE):
         notes.append("us_nutrition_facts")
         parser_confidence = 0.75
 
-    return {"parser": parser_confidence, "notes": notes}
+    return {
+        "parser": parser_confidence,
+        "detected_region": effective_region,
+        "sections_detected": detect_sections(text),
+        "notes": notes,
+    }
+
+
+def detect_sections(text: str) -> list[str]:
+    sections: list[str] = []
+    normalized_text = normalize_ocr_text(text)
+    if re.search(r"\bnutrition (facts|information)\b|\bcalories\b|\benergy\s+\d", normalized_text, re.IGNORECASE):
+        sections.append("nutrition")
+    if re.search(r"\bingredients?:", normalized_text, re.IGNORECASE):
+        sections.append("ingredients")
+    if re.search(r"\bcontains:|\bmay contain\b|\bfacility\b", normalized_text, re.IGNORECASE):
+        sections.append("allergens")
+    return sections
+
+
+def detect_region(text: str, region_hint: str) -> str:
+    if region_hint != "auto":
+        return region_hint
+    normalized_text = normalize_ocr_text(text)
+    if re.search(r"\bnutrition facts\b", normalized_text, re.IGNORECASE):
+        return "us"
+    if re.search(r"\bnutrition information\b|\benergy\s+\d", normalized_text, re.IGNORECASE):
+        return "sg"
+    return "auto"
+
+
+def normalize_ocr_text(text: str) -> str:
+    return "\n".join(" ".join(line.split()) for line in text.splitlines())
 
 
 def parse_nutrition(text: str) -> NutritionFacts:
+    text = normalize_ocr_text(text)
     nutrition: dict[str, float | int | str | None] = {}
+    source_text: dict[str, str] = {}
+    field_confidence: dict[str, float] = {}
 
-    serving_size = re.search(r"\bserving size:?\s+(.+)", text, re.IGNORECASE)
+    serving_size = _search_line(text, r"\bserving size:?\s+(.+)")
     if serving_size:
-        nutrition["serving_size_text"] = serving_size.group(1).strip()
+        nutrition["serving_size_text"] = serving_size.match.group(1).strip()
+        source_text["serving_size_text"] = serving_size.line
+        field_confidence["serving_size_text"] = 0.85
 
-    calories = re.search(r"\b(?:calories|energy)\s+(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+    calories = _search_line(text, r"\b(?:calories|energy)\s+(\d+(?:\.\d+)?)")
     if calories:
-        nutrition["calories"] = _number(calories.group(1))
+        nutrition["calories"] = _number(calories.match.group(1))
+        source_text["calories"] = calories.line
+        field_confidence["calories"] = 0.9
 
-    added_sugar = re.search(
-        r"\bincludes\s+(\d+(?:\.\d+)?)\s*g\s+added sugars?\b",
+    added_sugar = _search_line(
         text,
-        re.IGNORECASE,
+        r"\bincludes\s+(\d+(?:\.\d+)?)\s*g\s+added sugars?\b",
     )
     if added_sugar:
-        nutrition["added_sugar_g"] = _number(added_sugar.group(1))
+        nutrition["added_sugar_g"] = _number(added_sugar.match.group(1))
+        source_text["added_sugar_g"] = added_sugar.line
+        field_confidence["added_sugar_g"] = 0.9
 
     nutrient_patterns = {
         "total_sugar_g": r"\btotal sugars?\s+(\d+(?:\.\d+)?)\s*g\b",
@@ -44,14 +94,20 @@ def parse_nutrition(text: str) -> NutritionFacts:
         "protein_g": r"\bprotein\s+(\d+(?:\.\d+)?)\s*g\b",
     }
     for field_name, pattern in nutrient_patterns.items():
-        match = re.search(pattern, text, re.IGNORECASE)
+        match = _search_line(text, pattern)
         if match:
-            nutrition[field_name] = _number(match.group(1))
+            nutrition[field_name] = _number(match.match.group(1))
+            source_text[field_name] = match.line
+            field_confidence[field_name] = 0.85
+
+    nutrition["source_text"] = source_text
+    nutrition["field_confidence"] = field_confidence
 
     return NutritionFacts(**nutrition)
 
 
 def parse_ingredient_analysis(text: str) -> IngredientAnalysis:
+    text = normalize_ocr_text(text)
     ingredients = _parse_ingredients(text)
     contains_allergens: list[str] = []
     may_contain_allergens: list[str] = []
@@ -95,6 +151,14 @@ def _number(value: str) -> int | float:
 
 def _lines(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _search_line(text: str, pattern: str) -> LineMatch | None:
+    for line in _lines(text):
+        match = re.search(pattern, line, re.IGNORECASE)
+        if match:
+            return LineMatch(line=line, match=match)
+    return None
 
 
 def _split_allergen_list(value: str) -> list[str]:

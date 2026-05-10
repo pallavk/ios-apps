@@ -43,6 +43,8 @@ class NutritionFacts(BaseModel):
     total_fat_g: int | float | None = None
     total_carbohydrate_g: int | float | None = None
     protein_g: int | float | None = None
+    source_text: dict[str, str] = Field(default_factory=dict)
+    field_confidence: dict[str, float] = Field(default_factory=dict)
 
 
 class AnalyzeLabelResponse(BaseModel):

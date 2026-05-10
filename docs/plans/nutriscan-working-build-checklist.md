@@ -28,7 +28,7 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
 - [x] Create FastAPI service in `backend/nutriscan-api/`.
 - [x] Add Pydantic request/response schemas for `POST /analyze-label`.
 - [x] Add health endpoint (`GET /health`).
-- [ ] Add local run config (uvicorn) and `.env.example`.
+- [x] Add local run config (uvicorn) and `.env.example`.
 
 ## 4) Test Fixtures + TDD Baseline
 - [x] Create fixture folders:
@@ -48,14 +48,14 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
 - [x] Ingredients list extraction.
 - [x] Declared allergen extraction (`contains`).
 - [x] `may contain` and facility-warning extraction.
-- [ ] Region-aware normalization (`region_hint`: `sg | us | auto`).
+- [x] Region-aware normalization (`region_hint`: `sg | us | auto`).
   - [x] Initial Singapore and US parser notes/aliases based on explicit `region_hint`.
-- [ ] Field-level confidence and source-text references where possible.
+- [x] Field-level confidence and source-text references where possible.
 
 ## 6) End-to-End API
 - [ ] Implement `POST /analyze-label` orchestration pipeline:
-  - [ ] cleanup
-  - [ ] section detection
+  - [x] cleanup
+  - [x] section detection
   - [x] deterministic parse
   - [ ] optional LLM-assisted ingredient interpretation
   - [x] schema validation
@@ -74,15 +74,15 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
 
 ## 8) Preferences + Personalization
 - [ ] Build Preferences UI (allergens, dietary prefs, avoid-list, nutrition goals).
-- [ ] Pass preferences with analyze requests.
-- [ ] Highlight conflicts in results (contains/may contain/avoid-list matches).
-- [ ] Use conservative allergy wording (no safety guarantees).
+- [x] Pass preferences with analyze requests.
+- [x] Highlight conflicts in results (contains/may contain/avoid-list matches).
+- [x] Use conservative allergy wording (no safety guarantees).
 
 ## 9) Reliability + Privacy Hardening
 - [ ] Add retry/failure UX for OCR/API issues.
 - [ ] Add manual correction loop before analysis by default.
 - [x] Ensure on-device OCR and text-only upload default.
-- [ ] Add explicit opt-in if image upload is ever enabled.
+- [x] Add explicit opt-in if image upload is ever enabled.
 - [ ] Add disclaimer and safety copy in app settings/results.
 
 ## 10) Acceptance Criteria (Working Copy)
