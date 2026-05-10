@@ -38,6 +38,11 @@ class NutritionFacts(BaseModel):
     calories: int | float | None = None
     serving_size_text: str | None = None
     added_sugar_g: int | float | None = None
+    total_sugar_g: int | float | None = None
+    sodium_mg: int | float | None = None
+    total_fat_g: int | float | None = None
+    total_carbohydrate_g: int | float | None = None
+    protein_g: int | float | None = None
 
 
 class AnalyzeLabelResponse(BaseModel):

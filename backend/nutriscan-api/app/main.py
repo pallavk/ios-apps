@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from .parser import parse_ingredient_analysis, parse_nutrition
+from .parser import confidence_for, parse_ingredient_analysis, parse_nutrition
 from .schemas import AnalyzeLabelRequest, AnalyzeLabelResponse
 
 app = FastAPI(title="NutriScan API", version="0.1.0")
@@ -31,5 +31,5 @@ def analyze_label(payload: AnalyzeLabelRequest) -> AnalyzeLabelResponse:
         ingredient_analysis=parse_ingredient_analysis(payload.ocr_text),
         warnings=warnings,
         summary=summary,
-        confidence={"parser": 0.5},
+        confidence=confidence_for(payload.ocr_text, payload.region_hint),
     )

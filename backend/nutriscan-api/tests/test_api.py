@@ -55,6 +55,11 @@ def test_analyze_label_returns_structured_nutrition_fields_from_us_fixture() -> 
     assert nutrition["calories"] == 230
     assert nutrition["serving_size_text"] == "2/3 cup (55g)"
     assert nutrition["added_sugar_g"] == 10
+    assert nutrition["total_sugar_g"] == 12
+    assert nutrition["sodium_mg"] == 160
+    assert nutrition["total_fat_g"] == 8
+    assert nutrition["total_carbohydrate_g"] == 37
+    assert nutrition["protein_g"] == 3
 
 
 def test_analyze_label_returns_structured_allergen_fields_from_sg_fixture() -> None:
@@ -68,8 +73,35 @@ def test_analyze_label_returns_structured_allergen_fields_from_sg_fixture() -> N
 
     assert response.status_code == 200
     ingredient_analysis = response.json()["ingredient_analysis"]
+    assert ingredient_analysis["ingredients"] == [
+        "wheat flour",
+        "sugar",
+        "vegetable oil",
+        "milk powder",
+        "soy lecithin",
+        "salt",
+    ]
     assert ingredient_analysis["contains_allergens"] == ["wheat", "milk", "soy"]
     assert ingredient_analysis["may_contain_allergens"] == ["peanuts", "tree nuts"]
     assert ingredient_analysis["facility_allergen_warnings"] == [
         "Manufactured in a facility that also processes egg and sesame products."
     ]
+
+
+def test_analyze_label_applies_sg_nutrition_normalization_notes() -> None:
+    payload = {
+        "ocr_text": (FIXTURES_DIR / "sg" / "nutrition_panel.txt").read_text(),
+        "scan_type": "nutrition",
+        "region_hint": "sg",
+    }
+
+    response = client.post("/analyze-label", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["nutrition"]["calories"] == 190
+    assert body["nutrition"]["serving_size_text"] == "40g"
+    assert body["nutrition"]["protein_g"] == 5.5
+    assert body["nutrition"]["total_carbohydrate_g"] == 28
+    assert body["confidence"]["parser"] >= 0.7
+    assert "sg_nutrition_panel" in body["confidence"]["notes"]
