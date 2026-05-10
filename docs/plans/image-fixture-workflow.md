@@ -38,6 +38,10 @@ where possible.
 
 When exporting from the iOS app, keep the OCR text as the first snapshot. Edit
 only if the fixture is meant to represent a manually corrected OCR review state.
+The app uses bounding-box-aware OCR formatting, so nutrition tables may export
+with pipe-separated cells where Vision detects multiple text items on one row.
+Preserve that layout in fixtures; it helps compare parser behavior as OCR
+improves.
 
 ## Why Keep Both
 
