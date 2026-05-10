@@ -65,7 +65,7 @@ def parse_nutrition(text: str) -> NutritionFacts:
     source_text: dict[str, str] = {}
     field_confidence: dict[str, float] = {}
 
-    serving_size = _search_line(text, r"\bserving size:?\s+(.+)")
+    serving_size = _search_line(text, r"\bserving(?:\s+size:?)?\s+(.+)")
     if serving_size:
         nutrition["serving_size_text"] = serving_size.match.group(1).strip()
         source_text["serving_size_text"] = serving_size.line

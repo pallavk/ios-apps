@@ -234,3 +234,36 @@ def test_analyze_label_flags_general_ingredient_concerns() -> None:
             "source_text": "Ingredients: Enriched wheat flour, high fructose corn syrup, partially hydrogenated soybean oil, artificial flavors, sodium nitrite, salt.",
         },
     ]
+
+
+def test_real_lays_image_ocr_snapshot_parses_reliable_fields() -> None:
+    payload = {
+        "ocr_text": (FIXTURES_DIR / "us" / "lays-real-ocr.txt").read_text(),
+        "scan_type": "nutrition",
+        "region_hint": "auto",
+    }
+
+    response = client.post("/analyze-label", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["confidence"]["detected_region"] == "us"
+    assert body["nutrition"]["serving_size_text"] == "About 15 chips (28g)"
+    assert body["nutrition"]["calories"] == 160
+    assert body["nutrition"]["sodium_mg"] == 170
+
+
+def test_real_sg_image_ocr_snapshot_detects_panel_and_serving_size() -> None:
+    payload = {
+        "ocr_text": (FIXTURES_DIR / "sg" / "overlay-label-sticker-real-ocr.txt").read_text(),
+        "scan_type": "nutrition_and_ingredients",
+        "region_hint": "auto",
+    }
+
+    response = client.post("/analyze-label", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["confidence"]["detected_region"] == "sg"
+    assert "sg_nutrition_panel" in body["confidence"]["notes"]
+    assert body["nutrition"]["serving_size_text"] == "107 g (1 bag)"

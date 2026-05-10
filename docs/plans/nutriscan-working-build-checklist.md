@@ -37,7 +37,7 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
   - [x] `tests/fixtures/label-images/sg/`
   - [x] `tests/fixtures/label-images/us/`
   - [x] `tests/fixtures/label-images/inbox/`
-- [ ] Add first real label image fixtures and generated OCR snapshots (nutrition + ingredients).
+- [x] Add first real label image fixtures and generated OCR snapshots (nutrition + ingredients).
   - [x] Add first realistic OCR-like text fixtures for Singapore and US parser coverage.
 - [x] Write failing tests first (red):
   - [x] nutrition parsing
