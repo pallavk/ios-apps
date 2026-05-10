@@ -76,6 +76,12 @@ struct AnalysisDraft {
     var analysis: LabelAnalysis?
 }
 
+enum ScanTitleFormatter {
+    static func title(prefix: String, date: Date = .now) -> String {
+        "\(prefix) \(date.formatted(.dateTime.month(.abbreviated).day().hour().minute()))"
+    }
+}
+
 enum LabelImageStore {
     static func saveJPEGData(_ data: Data, id: UUID = UUID()) throws -> String {
         let fileName = "\(id.uuidString).jpg"

@@ -209,7 +209,7 @@ private struct ScanView: View {
                 let imageFileName = try storeDraftImageIfAvailable(existingFileName: nil)
                 let scan = SavedScan(
                     id: scanID,
-                    title: "Label capture draft",
+                    title: ScanTitleFormatter.title(prefix: "Capture"),
                     ocrText: draft.ocrText,
                     imageReference: draft.imageReference,
                     imageFileName: imageFileName,
@@ -388,7 +388,7 @@ private struct ResultsView: View {
         do {
             let imageFileName = try storeDraftImageIfAvailable()
             let scan = SavedScan(
-                title: "Label scan",
+                title: ScanTitleFormatter.title(prefix: "Scan"),
                 ocrText: draft.ocrText,
                 imageReference: draft.imageReference,
                 imageFileName: imageFileName,
@@ -399,7 +399,7 @@ private struct ResultsView: View {
         } catch {
             saveMessage = "The image could not be saved, but OCR text is still available in this scan."
             let scan = SavedScan(
-                title: "Label scan",
+                title: ScanTitleFormatter.title(prefix: "Scan"),
                 ocrText: draft.ocrText,
                 imageReference: draft.imageReference,
                 summary: draft.summary
@@ -545,6 +545,9 @@ private struct HistoryView: View {
             }
         }
         .navigationTitle("History")
+        .toolbar {
+            EditButton()
+        }
     }
 
     private func deleteScans(at offsets: IndexSet) {
@@ -555,9 +558,12 @@ private struct HistoryView: View {
 }
 
 private struct SavedScanDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     let scan: SavedScan
     @State private var ocrExportURL: URL?
     @State private var savedImage: UIImage?
+    @State private var isShowingDeleteConfirmation = false
 
     var body: some View {
         List {
@@ -611,8 +617,26 @@ private struct SavedScanDetailView: View {
                     Text(imageReference)
                 }
             }
+
+            Section {
+                Button(role: .destructive) {
+                    isShowingDeleteConfirmation = true
+                } label: {
+                    Label("Delete scan", systemImage: "trash")
+                }
+            }
         }
         .navigationTitle(scan.title)
+        .confirmationDialog(
+            "Delete this saved scan?",
+            isPresented: $isShowingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete scan", role: .destructive) {
+                deleteScan()
+            }
+            Button("Cancel", role: .cancel) {}
+        }
         .task {
             ocrExportURL = try? LabelExportStore.writeOCRText(for: scan)
             savedImage = loadSavedImage()
@@ -626,6 +650,11 @@ private struct SavedScanDetailView: View {
             return nil
         }
         return UIImage(data: data)
+    }
+
+    private func deleteScan() {
+        modelContext.delete(scan)
+        dismiss()
     }
 }
 
