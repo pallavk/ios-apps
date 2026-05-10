@@ -191,3 +191,46 @@ def test_analyze_label_flags_user_preference_conflicts_conservatively() -> None:
         "No matching allergens were detected" not in " ".join(body["warnings"])
     )
     assert any("verify the physical label" in warning for warning in body["warnings"])
+
+
+def test_analyze_label_flags_general_ingredient_concerns() -> None:
+    payload = {
+        "ocr_text": (FIXTURES_DIR / "us" / "ingredients_concerns.txt").read_text(),
+        "scan_type": "ingredients",
+        "region_hint": "us",
+    }
+
+    response = client.post("/analyze-label", json=payload)
+
+    assert response.status_code == 200
+    concerns = response.json()["ingredient_analysis"]["ingredient_concerns"]
+    assert concerns == [
+        {
+            "ingredient": "high fructose corn syrup",
+            "category": "added_sweetener",
+            "severity": "review",
+            "reason": "Added sweetener term detected in the ingredient list.",
+            "source_text": "Ingredients: Enriched wheat flour, high fructose corn syrup, partially hydrogenated soybean oil, artificial flavors, sodium nitrite, salt.",
+        },
+        {
+            "ingredient": "partially hydrogenated soybean oil",
+            "category": "highly_processed_fat",
+            "severity": "review",
+            "reason": "Hydrogenated fat/oil term detected in the ingredient list.",
+            "source_text": "Ingredients: Enriched wheat flour, high fructose corn syrup, partially hydrogenated soybean oil, artificial flavors, sodium nitrite, salt.",
+        },
+        {
+            "ingredient": "artificial flavors",
+            "category": "additive_or_preservative",
+            "severity": "review",
+            "reason": "Additive or preservative term detected in the ingredient list.",
+            "source_text": "Ingredients: Enriched wheat flour, high fructose corn syrup, partially hydrogenated soybean oil, artificial flavors, sodium nitrite, salt.",
+        },
+        {
+            "ingredient": "sodium nitrite",
+            "category": "additive_or_preservative",
+            "severity": "review",
+            "reason": "Additive or preservative term detected in the ingredient list.",
+            "source_text": "Ingredients: Enriched wheat flour, high fructose corn syrup, partially hydrogenated soybean oil, artificial flavors, sodium nitrite, salt.",
+        },
+    ]

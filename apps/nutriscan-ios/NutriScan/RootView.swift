@@ -235,6 +235,15 @@ private struct ResultsView: View {
                     if !ingredientAnalysis.mayContainAllergens.isEmpty {
                         LabeledContent("May contain", value: ingredientAnalysis.mayContainAllergens.joined(separator: ", "))
                     }
+                    ForEach(ingredientAnalysis.ingredientConcerns, id: \.ingredient) { concern in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(concern.ingredient, systemImage: "exclamationmark.circle")
+                                .font(.headline)
+                            Text(concern.reason)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     ForEach(ingredientAnalysis.flags, id: \.self) { flag in
                         Label(flag, systemImage: "exclamationmark.triangle")
                     }

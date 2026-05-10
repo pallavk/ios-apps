@@ -46,6 +46,7 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
 ## 5) Parsing Features (MVP)
 - [x] Nutrition extraction for core fields (calories, serving size, sugars, sodium, fats, protein).
 - [x] Ingredients list extraction.
+- [x] General ingredient concern detection for added sweeteners, processed fats, and common additives.
 - [x] Declared allergen extraction (`contains`).
 - [x] `may contain` and facility-warning extraction.
 - [x] Region-aware normalization (`region_hint`: `sg | us | auto`).
@@ -58,6 +59,7 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
   - [x] section detection
   - [x] deterministic parse
   - [ ] optional LLM-assisted ingredient interpretation
+    - [x] Document opt-in LLM design and API-key requirement.
   - [x] schema validation
   - [x] summary generation
 - [x] Return standardized response fields (`nutrition`, `ingredient_analysis`, `warnings`, `summary`, `confidence`).

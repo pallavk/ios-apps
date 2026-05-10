@@ -31,7 +31,16 @@ class IngredientAnalysis(BaseModel):
     contains_allergens: list[str] = Field(default_factory=list)
     may_contain_allergens: list[str] = Field(default_factory=list)
     facility_allergen_warnings: list[str] = Field(default_factory=list)
+    ingredient_concerns: list["IngredientConcern"] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
+
+
+class IngredientConcern(BaseModel):
+    ingredient: str
+    category: str
+    severity: str
+    reason: str
+    source_text: str
 
 
 class NutritionFacts(BaseModel):

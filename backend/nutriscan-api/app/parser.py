@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from re import Match
 
-from .schemas import IngredientAnalysis, NutritionFacts
+from .schemas import IngredientAnalysis, IngredientConcern, NutritionFacts
 
 
 @dataclass(frozen=True)
@@ -139,6 +139,7 @@ def parse_ingredient_analysis(text: str) -> IngredientAnalysis:
         contains_allergens=_dedupe(contains_allergens),
         may_contain_allergens=_dedupe(may_contain_allergens),
         facility_allergen_warnings=facility_allergen_warnings,
+        ingredient_concerns=_ingredient_concerns(text, ingredients),
     )
 
 
@@ -186,6 +187,53 @@ def _parse_ingredients(text: str) -> list[str]:
 def _split_ingredients(value: str) -> list[str]:
     cleaned = value.rstrip(". ")
     return [part.strip().lower() for part in cleaned.split(",") if part.strip()]
+
+
+def _ingredient_concerns(text: str, ingredients: list[str]) -> list[IngredientConcern]:
+    source_line = _ingredient_source_line(text)
+    concerns: list[IngredientConcern] = []
+    for ingredient in ingredients:
+        concern = _concern_for(ingredient, source_line)
+        if concern:
+            concerns.append(concern)
+    return concerns
+
+
+def _ingredient_source_line(text: str) -> str:
+    for line in _lines(text):
+        if re.match(r"ingredients?:", line, re.IGNORECASE):
+            return line
+    return ""
+
+
+def _concern_for(ingredient: str, source_line: str) -> IngredientConcern | None:
+    concern_rules = [
+        (
+            ["high fructose corn syrup", "corn syrup", "glucose syrup", "fructose", "dextrose", "maltodextrin", "cane sugar"],
+            "added_sweetener",
+            "Added sweetener term detected in the ingredient list.",
+        ),
+        (
+            ["partially hydrogenated", "hydrogenated", "shortening", "palm oil"],
+            "highly_processed_fat",
+            "Hydrogenated fat/oil term detected in the ingredient list.",
+        ),
+        (
+            ["artificial flavor", "artificial colour", "artificial color", "sodium nitrite", "sodium benzoate", "potassium sorbate", "monosodium glutamate", "msg"],
+            "additive_or_preservative",
+            "Additive or preservative term detected in the ingredient list.",
+        ),
+    ]
+    for terms, category, reason in concern_rules:
+        if any(term in ingredient for term in terms):
+            return IngredientConcern(
+                ingredient=ingredient,
+                category=category,
+                severity="review",
+                reason=reason,
+                source_text=source_line,
+            )
+    return None
 
 
 def _dedupe(values: list[str]) -> list[str]:

@@ -85,6 +85,7 @@ struct IngredientAnalysis: Decodable {
     var containsAllergens: [String]
     var mayContainAllergens: [String]
     var facilityAllergenWarnings: [String]
+    var ingredientConcerns: [IngredientConcern]
     var flags: [String]
 
     enum CodingKeys: String, CodingKey {
@@ -92,7 +93,24 @@ struct IngredientAnalysis: Decodable {
         case containsAllergens = "contains_allergens"
         case mayContainAllergens = "may_contain_allergens"
         case facilityAllergenWarnings = "facility_allergen_warnings"
+        case ingredientConcerns = "ingredient_concerns"
         case flags
+    }
+}
+
+struct IngredientConcern: Decodable {
+    var ingredient: String
+    var category: String
+    var severity: String
+    var reason: String
+    var sourceText: String
+
+    enum CodingKeys: String, CodingKey {
+        case ingredient
+        case category
+        case severity
+        case reason
+        case sourceText = "source_text"
     }
 }
 
