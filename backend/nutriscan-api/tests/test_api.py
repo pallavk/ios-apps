@@ -267,3 +267,40 @@ def test_real_sg_image_ocr_snapshot_detects_panel_and_serving_size() -> None:
     assert body["confidence"]["detected_region"] == "sg"
     assert "sg_nutrition_panel" in body["confidence"]["notes"]
     assert body["nutrition"]["serving_size_text"] == "107 g (1 bag)"
+
+
+def test_physical_label_scenario_flags_top_allergens_and_borderline_ingredients() -> None:
+    payload = {
+        "ocr_text": (FIXTURES_DIR / "us" / "allergy_concern_physical_label.txt").read_text(),
+        "scan_type": "nutrition_and_ingredients",
+        "region_hint": "auto",
+        "user_preferences": {
+            "allergens": ["milk", "peanuts", "soy", "sesame"],
+            "avoid_ingredients": [],
+            "dietary_preferences": [],
+        },
+    }
+
+    response = client.post("/analyze-label", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    ingredient_analysis = body["ingredient_analysis"]
+    assert ingredient_analysis["contains_allergens"] == ["milk"]
+    assert ingredient_analysis["may_contain_allergens"] == ["peanuts", "tree nuts"]
+    assert ingredient_analysis["facility_allergen_warnings"] == [
+        "Made on equipment that also processes soy and sesame."
+    ]
+    assert ingredient_analysis["flags"] == [
+        "Declared allergen match: milk",
+        "Possible cross-contact allergen match: peanuts",
+        "Facility warning mentions allergen preference: soy",
+        "Facility warning mentions allergen preference: sesame",
+    ]
+    assert [concern["ingredient"] for concern in ingredient_analysis["ingredient_concerns"]] == [
+        "high fructose corn syrup",
+        "sucralose",
+        "acesulfame potassium",
+        "artificial color",
+        "tbhq",
+    ]

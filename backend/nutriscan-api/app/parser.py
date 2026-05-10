@@ -127,7 +127,7 @@ def parse_ingredient_analysis(text: str) -> IngredientAnalysis:
             may_contain_allergens.extend(_split_allergen_list(may_contain_match.group(1)))
 
         facility_match = re.search(
-            r"\bfacility\b.*\b(processes|processed|handles|manufactures)\b",
+            r"\b(?:facility|factory|equipment)\b.*\b(processes|processed|handles|manufactures)\b",
             line,
             re.IGNORECASE,
         )
@@ -219,7 +219,19 @@ def _concern_for(ingredient: str, source_line: str) -> IngredientConcern | None:
             "Hydrogenated fat/oil term detected in the ingredient list.",
         ),
         (
-            ["artificial flavor", "artificial colour", "artificial color", "sodium nitrite", "sodium benzoate", "potassium sorbate", "monosodium glutamate", "msg"],
+            [
+                "artificial flavor",
+                "artificial colour",
+                "artificial color",
+                "sodium nitrite",
+                "sodium benzoate",
+                "potassium sorbate",
+                "monosodium glutamate",
+                "msg",
+                "sucralose",
+                "acesulfame potassium",
+                "tbhq",
+            ],
             "additive_or_preservative",
             "Additive or preservative term detected in the ingredient list.",
         ),

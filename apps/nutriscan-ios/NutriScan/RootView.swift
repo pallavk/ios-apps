@@ -74,11 +74,13 @@ private struct HomeView: View {
 }
 
 private struct ScanView: View {
+    @Environment(\.modelContext) private var modelContext
     @Binding var draft: AnalysisDraft
     @Binding var selectedTab: AppTab
     let preferences: UserPreferenceSelection
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isShowingCamera = false
+    @State private var saveMessage: String?
 
     var body: some View {
         Form {
@@ -91,6 +93,9 @@ private struct ScanView: View {
                 } label: {
                     Label("Take label photo", systemImage: "camera")
                 }
+                Text("Photos and OCR drafts stay on this iPhone unless you share them from History.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section("OCR review") {
@@ -104,6 +109,13 @@ private struct ScanView: View {
 
             Section {
                 Button {
+                    saveCaptureDraft()
+                } label: {
+                    Label("Save capture draft", systemImage: "tray.and.arrow.down")
+                }
+                .disabled(!draft.hasCollectableContent)
+
+                Button {
                     Task {
                         await analyzeDraft()
                     }
@@ -111,6 +123,17 @@ private struct ScanView: View {
                     Label("Analyze text", systemImage: "text.magnifyingglass")
                 }
                 .disabled(draft.ocrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            if let saveMessage {
+                Section("Saved") {
+                    Text(saveMessage)
+                    Button {
+                        selectedTab = .history
+                    } label: {
+                        Label("Open history", systemImage: "clock")
+                    }
+                }
             }
 
             if draft.isLoading {
@@ -146,11 +169,32 @@ private struct ScanView: View {
             CameraCaptureView { image in
                 isShowingCamera = false
                 Task {
-                    await recognize(image: image, imageReference: "camera:\(Date.now.timeIntervalSince1970)")
+                    await recognize(
+                        image: image,
+                        imageData: image.jpegData(compressionQuality: 0.9),
+                        imageReference: "camera:\(Date.now.timeIntervalSince1970)"
+                    )
                 }
             } onCancel: {
                 isShowingCamera = false
             }
+        }
+    }
+
+    private func saveCaptureDraft() {
+        do {
+            let imageFileName = try storeDraftImageIfAvailable()
+            let scan = SavedScan(
+                title: "Label capture draft",
+                ocrText: draft.ocrText,
+                imageReference: draft.imageReference,
+                imageFileName: imageFileName,
+                summary: "Saved OCR/photo draft for fixture review. Analysis has not been run."
+            )
+            modelContext.insert(scan)
+            saveMessage = "Capture draft saved locally."
+        } catch {
+            draft.errorMessage = "The capture draft could not be saved: \(error.localizedDescription)"
         }
     }
 
@@ -184,7 +228,7 @@ private struct ScanView: View {
                 draft.isLoading = false
                 return
             }
-            await recognize(image: image, imageReference: item.itemIdentifier)
+            await recognize(image: image, imageData: data, imageReference: item.itemIdentifier)
         } catch {
             draft.errorMessage = error.localizedDescription
             draft.isLoading = false
@@ -192,22 +236,30 @@ private struct ScanView: View {
     }
 
     @MainActor
-    private func recognize(image: UIImage, imageReference: String?) async {
+    private func recognize(image: UIImage, imageData: Data?, imageReference: String?) async {
         draft.isLoading = true
         draft.errorMessage = nil
+        saveMessage = nil
+        draft.imageData = imageData
+        draft.imageReference = imageReference
         do {
             draft.ocrText = try await OCRScanner.text(from: image)
-            draft.imageReference = imageReference
         } catch {
             draft.errorMessage = error.localizedDescription
         }
         draft.isLoading = false
+    }
+
+    private func storeDraftImageIfAvailable() throws -> String? {
+        guard let imageData = draft.imageData else { return nil }
+        return try LabelImageStore.saveJPEGData(imageData)
     }
 }
 
 private struct ResultsView: View {
     @Environment(\.modelContext) private var modelContext
     let draft: AnalysisDraft
+    @State private var saveMessage: String?
 
     var body: some View {
         List {
@@ -276,19 +328,44 @@ private struct ResultsView: View {
                     Label("Save scan", systemImage: "tray.and.arrow.down")
                 }
                 .disabled(draft.ocrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if let saveMessage {
+                    Text(saveMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .navigationTitle("Results")
     }
 
     private func saveScan() {
-        let scan = SavedScan(
-            title: "Label scan",
-            ocrText: draft.ocrText,
-            imageReference: draft.imageReference,
-            summary: draft.summary
-        )
-        modelContext.insert(scan)
+        do {
+            let imageFileName = try storeDraftImageIfAvailable()
+            let scan = SavedScan(
+                title: "Label scan",
+                ocrText: draft.ocrText,
+                imageReference: draft.imageReference,
+                imageFileName: imageFileName,
+                summary: draft.summary
+            )
+            modelContext.insert(scan)
+            saveMessage = "Scan saved locally."
+        } catch {
+            saveMessage = "The image could not be saved, but OCR text is still available in this scan."
+            let scan = SavedScan(
+                title: "Label scan",
+                ocrText: draft.ocrText,
+                imageReference: draft.imageReference,
+                summary: draft.summary
+            )
+            modelContext.insert(scan)
+        }
+    }
+
+    private func storeDraftImageIfAvailable() throws -> String? {
+        guard let imageData = draft.imageData else { return nil }
+        return try LabelImageStore.saveJPEGData(imageData)
     }
 
     @ViewBuilder
@@ -434,6 +511,7 @@ private struct HistoryView: View {
 
 private struct SavedScanDetailView: View {
     let scan: SavedScan
+    @State private var ocrExportURL: URL?
 
     var body: some View {
         List {
@@ -446,6 +524,24 @@ private struct SavedScanDetailView: View {
                     .textSelection(.enabled)
             }
 
+            Section("Export") {
+                if let ocrExportURL {
+                    ShareLink(item: ocrExportURL) {
+                        Label("Share OCR text", systemImage: "doc.text")
+                    }
+                }
+
+                if let imageURL = scan.storedImageURL {
+                    ShareLink(item: imageURL) {
+                        Label("Share label photo", systemImage: "photo")
+                    }
+                }
+
+                Text("Use these exports to place photos in tests/fixtures/label-images/inbox and OCR snapshots under backend/nutriscan-api/tests/fixtures.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             if let imageReference = scan.imageReference {
                 Section("Image reference") {
                     Text(imageReference)
@@ -453,6 +549,15 @@ private struct SavedScanDetailView: View {
             }
         }
         .navigationTitle(scan.title)
+        .task {
+            ocrExportURL = try? LabelExportStore.writeOCRText(for: scan)
+        }
+    }
+}
+
+private extension AnalysisDraft {
+    var hasCollectableContent: Bool {
+        imageData != nil || !ocrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 

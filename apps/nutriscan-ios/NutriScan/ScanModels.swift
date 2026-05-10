@@ -8,6 +8,7 @@ final class SavedScan {
     var title: String
     var ocrText: String
     var imageReference: String?
+    var imageFileName: String?
     var summary: String
 
     init(
@@ -16,6 +17,7 @@ final class SavedScan {
         title: String,
         ocrText: String,
         imageReference: String? = nil,
+        imageFileName: String? = nil,
         summary: String
     ) {
         self.id = id
@@ -23,7 +25,13 @@ final class SavedScan {
         self.title = title
         self.ocrText = ocrText
         self.imageReference = imageReference
+        self.imageFileName = imageFileName
         self.summary = summary
+    }
+
+    var storedImageURL: URL? {
+        guard let imageFileName else { return nil }
+        return LabelImageStore.url(for: imageFileName)
     }
 }
 
@@ -63,5 +71,45 @@ struct AnalysisDraft {
     var isLoading = false
     var errorMessage: String?
     var imageReference: String?
+    var imageData: Data?
     var analysis: LabelAnalysis?
+}
+
+enum LabelImageStore {
+    static func saveJPEGData(_ data: Data, id: UUID = UUID()) throws -> String {
+        let fileName = "\(id.uuidString).jpg"
+        let url = try imageDirectoryURL().appending(path: fileName)
+        try data.write(to: url, options: [.atomic])
+        return fileName
+    }
+
+    static func url(for fileName: String) -> URL? {
+        try? imageDirectoryURL().appending(path: fileName)
+    }
+
+    private static func imageDirectoryURL() throws -> URL {
+        let baseURL = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let directoryURL = baseURL.appending(path: "LabelImages", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        return directoryURL
+    }
+}
+
+enum LabelExportStore {
+    static func writeOCRText(for scan: SavedScan) throws -> URL {
+        let safeTitle = scan.title
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
+        let fileName = "\(safeTitle.isEmpty ? "label-scan" : safeTitle)-\(scan.id.uuidString).txt"
+        let url = FileManager.default.temporaryDirectory.appending(path: fileName)
+        try scan.ocrText.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
 }

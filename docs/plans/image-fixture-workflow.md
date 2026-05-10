@@ -11,6 +11,11 @@ Store incoming real product-label images in:
 tests/fixtures/label-images/inbox/
 ```
 
+The iOS app can now save a capture draft before analysis. From `Scan`, use
+`Save capture draft` after OCR runs. From `History`, open the saved draft and
+share the label photo and OCR text. Move the shared photo into the image inbox
+above, then review and promote it into the Singapore or US folder.
+
 Once reviewed, move them to:
 
 ```text
@@ -31,6 +36,9 @@ backend/nutriscan-api/tests/fixtures/us/
 Each snapshot should preserve OCR mistakes, odd line breaks, and ambiguous text
 where possible.
 
+When exporting from the iOS app, keep the OCR text as the first snapshot. Edit
+only if the fixture is meant to represent a manually corrected OCR review state.
+
 ## Why Keep Both
 
 - Images test the capture/OCR path and manual review workflow.
@@ -46,3 +54,4 @@ For each real product fixture, aim to capture:
 - contains allergen declaration, if present
 - may contain or facility warning, if present
 - region classification as Singapore or US
+- app-exported OCR text, even when imperfect

@@ -23,6 +23,7 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
 - [x] Integrate Apple Vision OCR extraction.
 - [x] Render raw OCR output in editable text view.
 - [x] Persist OCR text + image reference locally.
+  - [x] Save OCR/photo capture drafts before backend analysis.
 
 ## 3) Parser Backend Skeleton
 - [x] Create FastAPI service in `backend/nutriscan-api/`.
@@ -99,11 +100,13 @@ Use this checklist to create a fully working end-to-end MVP "working copy" of Nu
 - [x] Summary is generated and understandable.
 - [x] Scan can be saved and reopened from history.
 - [ ] At least 20–50 mixed Singapore/US fixtures run in parser test suite.
+  - [x] Add fixture workflow from iPhone capture drafts to fixture inbox.
 
 ## 11) Launch-Readiness for Internal Beta
 - [ ] Smoke test on physical iPhone devices with varied lighting.
   - [x] Build, install, launch, and screenshot smoke test on iPhone 17 simulator.
   - [x] Build, install, and launch smoke test on iPhone 14 Pro physical device.
 - [ ] Validate top allergy scenarios against physical labels.
+  - [x] Add first top-allergy scenario fixture covering contains, may contain, and equipment warnings.
 - [ ] Review legal/safety copy for non-medical positioning.
 - [ ] Freeze MVP scope and create post-MVP backlog (barcode, sync, Android).

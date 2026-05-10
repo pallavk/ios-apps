@@ -1,3 +1,5 @@
+import re
+
 from fastapi import FastAPI
 
 from .parser import confidence_for, parse_ingredient_analysis, parse_nutrition
@@ -19,7 +21,7 @@ def analyze_label(payload: AnalyzeLabelRequest) -> AnalyzeLabelResponse:
     warnings: list[str] = []
     if "contains" in text:
         warnings.append("Contains statement detected; verify the physical label before making allergy decisions.")
-    if "may contain" in text or "processed in a facility" in text:
+    if "may contain" in text or "facility" in text or "equipment" in text:
         warnings.append("Cross-contamination warning text detected.")
     warnings.extend(_preference_flags(ingredient_analysis, payload))
 
@@ -52,6 +54,12 @@ def _preference_flags(
     for allergen in ingredient_analysis.may_contain_allergens:
         if _normalize_match(allergen) in preferred_allergens:
             flags.append(f"Possible cross-contact allergen match: {allergen}")
+
+    for warning in ingredient_analysis.facility_allergen_warnings:
+        normalized_warning = _normalize_match(warning)
+        for allergen in preferred_allergens:
+            if re.search(rf"\b{re.escape(allergen)}\b", normalized_warning):
+                flags.append(f"Facility warning mentions allergen preference: {allergen}")
 
     for ingredient in ingredient_analysis.ingredients:
         if _normalize_match(ingredient) in avoid_ingredients:
