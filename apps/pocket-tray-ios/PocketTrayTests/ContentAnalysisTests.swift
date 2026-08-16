@@ -198,8 +198,8 @@ final class ContentAnalysisTests: XCTestCase {
         )
         let second = ContentAction(
             kind: .url,
-            value: "https://second.example/path",
-            target: "https://second.example/path"
+            value: "https://first.example/help",
+            target: "https://first.example/help"
         )
         let address = ContentAction(
             kind: .address,
@@ -207,8 +207,8 @@ final class ContentAnalysisTests: XCTestCase {
             target: "http://maps.apple.com/?q=1%20Orchard%20Road"
         )
 
-        XCTAssertEqual(first.suggestedTitle, "Open first.example")
-        XCTAssertEqual(second.suggestedTitle, "Open second.example")
+        XCTAssertEqual(first.suggestedTitle, "Open https://first.example/path")
+        XCTAssertEqual(second.suggestedTitle, "Open https://first.example/help")
         XCTAssertNotEqual(first.suggestedTitle, second.suggestedTitle)
         XCTAssertEqual(address.suggestedTitle, "Open 1 Orchard Road in Maps")
     }

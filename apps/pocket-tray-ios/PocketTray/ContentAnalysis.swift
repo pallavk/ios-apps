@@ -29,8 +29,7 @@ struct ContentAction: Codable, Equatable, Identifiable, Sendable {
     var suggestedTitle: String {
         switch kind {
         case .url:
-            let destination = target.flatMap(URL.init(string:))?.host() ?? value
-            return "Open \(destination)"
+            return "Open \(value)"
         case .phone:
             return "Call \(value)"
         case .address:
