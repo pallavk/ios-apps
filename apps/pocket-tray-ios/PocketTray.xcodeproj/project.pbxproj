@@ -31,6 +31,11 @@
 		A10000000000000000000123 /* SystemCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000019 /* SystemCaptureTests.swift */; };
 		A10000000000000000000124 /* SystemCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001A /* SystemCapture.swift */; };
 		A10000000000000000000125 /* ControlCaptureHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001B /* ControlCaptureHandoff.swift */; };
+		A10000000000000000000126 /* CaptureFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001C /* CaptureFeedback.swift */; };
+		A10000000000000000000127 /* TrayTextViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001D /* TrayTextViews.swift */; };
+		A10000000000000000000128 /* ItemEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001E /* ItemEditor.swift */; };
+		A10000000000000000000129 /* CollectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001F /* CollectionViews.swift */; };
+		A10000000000000000000130 /* TrayItemList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000020 /* TrayItemList.swift */; };
 		B20000000000000000000101 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* ShareViewController.swift */; };
 		B20000000000000000000102 /* Tray.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000006 /* Tray.swift */; };
 		B20000000000000000000103 /* TrayPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* TrayPersistence.swift */; };
@@ -99,6 +104,11 @@
 		A10000000000000000000019 /* SystemCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemCaptureTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000001A /* SystemCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemCapture.swift; sourceTree = "<group>"; };
 		A1000000000000000000001B /* ControlCaptureHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCaptureHandoff.swift; sourceTree = "<group>"; };
+		A1000000000000000000001C /* CaptureFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFeedback.swift; sourceTree = "<group>"; };
+		A1000000000000000000001D /* TrayTextViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrayTextViews.swift; sourceTree = "<group>"; };
+		A1000000000000000000001E /* ItemEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemEditor.swift; sourceTree = "<group>"; };
+		A1000000000000000000001F /* CollectionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionViews.swift; sourceTree = "<group>"; };
+		A10000000000000000000020 /* TrayItemList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrayItemList.swift; sourceTree = "<group>"; };
 		B20000000000000000000001 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B20000000000000000000003 /* PocketTrayShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PocketTrayShare.entitlements; sourceTree = "<group>"; };
@@ -146,6 +156,11 @@
 			children = (
 				A10000000000000000000001 /* PocketTrayApp.swift */,
 				A10000000000000000000002 /* RootView.swift */,
+				A1000000000000000000001C /* CaptureFeedback.swift */,
+				A1000000000000000000001D /* TrayTextViews.swift */,
+				A1000000000000000000001E /* ItemEditor.swift */,
+				A1000000000000000000001F /* CollectionViews.swift */,
+				A10000000000000000000020 /* TrayItemList.swift */,
 				A10000000000000000000006 /* Tray.swift */,
 				A10000000000000000000007 /* TrayPersistence.swift */,
 				A10000000000000000000008 /* ShareCapture.swift */,
@@ -309,7 +324,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A10000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000101 /* PocketTrayApp.swift in Sources */, A10000000000000000000102 /* RootView.swift in Sources */, A10000000000000000000104 /* Tray.swift in Sources */, A10000000000000000000105 /* TrayPersistence.swift in Sources */, A10000000000000000000106 /* ShareCapture.swift in Sources */, A10000000000000000000107 /* ImageAsset.swift in Sources */, A10000000000000000000109 /* AssetStore.swift in Sources */, A10000000000000000000110 /* TrayImageViews.swift in Sources */, A10000000000000000000111 /* NSItemProviderShareItem.swift in Sources */, A10000000000000000000113 /* PDFAsset.swift in Sources */, A10000000000000000000114 /* TrayPDFViews.swift in Sources */, A10000000000000000000115 /* ContentAnalysis.swift in Sources */, A10000000000000000000118 /* AppleContentAnalyzer.swift in Sources */, A10000000000000000000119 /* SensitiveContent.swift in Sources */, A10000000000000000000122 /* AppLock.swift in Sources */, A10000000000000000000124 /* SystemCapture.swift in Sources */, A10000000000000000000125 /* ControlCaptureHandoff.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000101 /* PocketTrayApp.swift in Sources */, A10000000000000000000102 /* RootView.swift in Sources */, A10000000000000000000126 /* CaptureFeedback.swift in Sources */, A10000000000000000000127 /* TrayTextViews.swift in Sources */, A10000000000000000000128 /* ItemEditor.swift in Sources */, A10000000000000000000129 /* CollectionViews.swift in Sources */, A10000000000000000000130 /* TrayItemList.swift in Sources */, A10000000000000000000104 /* Tray.swift in Sources */, A10000000000000000000105 /* TrayPersistence.swift in Sources */, A10000000000000000000106 /* ShareCapture.swift in Sources */, A10000000000000000000107 /* ImageAsset.swift in Sources */, A10000000000000000000109 /* AssetStore.swift in Sources */, A10000000000000000000110 /* TrayImageViews.swift in Sources */, A10000000000000000000111 /* NSItemProviderShareItem.swift in Sources */, A10000000000000000000113 /* PDFAsset.swift in Sources */, A10000000000000000000114 /* TrayPDFViews.swift in Sources */, A10000000000000000000115 /* ContentAnalysis.swift in Sources */, A10000000000000000000118 /* AppleContentAnalyzer.swift in Sources */, A10000000000000000000119 /* SensitiveContent.swift in Sources */, A10000000000000000000122 /* AppLock.swift in Sources */, A10000000000000000000124 /* SystemCapture.swift in Sources */, A10000000000000000000125 /* ControlCaptureHandoff.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 		A10000000000000000000502 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000103 /* TrayTests.swift in Sources */, A10000000000000000000108 /* ImageCaptureTests.swift in Sources */, A10000000000000000000112 /* PDFCaptureTests.swift in Sources */, A10000000000000000000116 /* ContentAnalysisTests.swift in Sources */, A10000000000000000000117 /* AppleContentAnalyzerTests.swift in Sources */, A10000000000000000000120 /* SensitiveContentTests.swift in Sources */, A10000000000000000000121 /* AppLockTests.swift in Sources */, A10000000000000000000123 /* SystemCaptureTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 		B20000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B20000000000000000000101 /* ShareViewController.swift in Sources */, B20000000000000000000102 /* Tray.swift in Sources */, B20000000000000000000103 /* TrayPersistence.swift in Sources */, B20000000000000000000104 /* ShareCapture.swift in Sources */, B20000000000000000000106 /* ImageAsset.swift in Sources */, B20000000000000000000107 /* AssetStore.swift in Sources */, B20000000000000000000108 /* NSItemProviderShareItem.swift in Sources */, B20000000000000000000109 /* PDFAsset.swift in Sources */, B20000000000000000000110 /* ContentAnalysis.swift in Sources */, B20000000000000000000111 /* SensitiveContent.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 		C30000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C30000000000000000000101 /* PocketTrayControls.swift in Sources */, C30000000000000000000103 /* ControlCaptureHandoff.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
