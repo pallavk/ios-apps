@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -13,6 +14,7 @@ struct RootView: View {
         case assignCollection(TrayItem)
         case addItems(TrayCollection)
         case editItem(TrayItem)
+        case newText
         case previewImage(TrayItem)
         case previewPDF(TrayItem)
         case renameCollection(TrayCollection)
@@ -25,6 +27,7 @@ struct RootView: View {
             case let .assignCollection(item): "assign-collection-\(item.id)"
             case let .addItems(collection): "add-items-\(collection.id)"
             case let .editItem(item): "edit-item-\(item.id)"
+            case .newText: "new-text"
             case let .previewImage(item): "preview-image-\(item.id)"
             case let .previewPDF(item): "preview-pdf-\(item.id)"
             case let .renameCollection(collection): "rename-collection-\(collection.id)"
@@ -86,6 +89,10 @@ struct RootView: View {
     @State private var storageWarningMessage: String?
     @State private var hasShownStorageWarning = false
     @State private var isReadingClipboard = false
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isLoadingDirectCapture = false
+    @State private var isPresentingCamera = false
+    @State private var isShowingCameraPermissionHelp = false
 
     init(
         tray: Tray,
@@ -153,6 +160,10 @@ struct RootView: View {
                 sensitivePreviewSession.endForegroundSession()
             }
         }
+        .onChange(of: selectedPhoto) { _, selection in
+            guard let selection else { return }
+            Task { await loadSelectedPhoto(selection) }
+        }
         .overlay(alignment: .top) {
             if let feedback {
                 FeedbackToast(
@@ -205,6 +216,13 @@ struct RootView: View {
                 ItemEditor(item: item, collections: snapshot.collections, tray: tray) {
                     await reload()
                 }
+            case .newText:
+                DirectTextComposer(
+                    service: DirectCaptureService(tray: tray),
+                    collections: snapshot.collections
+                ) { item in
+                    await directCaptureDidSave(item)
+                }
             case let .previewImage(item):
                 TrayImageDetailView(item: item, tray: tray)
             case let .previewPDF(item):
@@ -233,6 +251,22 @@ struct RootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(storageWarningMessage ?? "Pocket Tray will keep your originals unchanged. Review usage in Settings.")
+        }
+        .alert("Camera Access Needed", isPresented: $isShowingCameraPermissionHelp) {
+            Button("Cancel", role: .cancel) {}
+            Button("Open Settings") {
+                openURL(URL(string: UIApplication.openSettingsURLString)!)
+            }
+        } message: {
+            Text("Allow camera access in Settings to take photos directly in Pocket Tray.")
+        }
+        .fullScreenCover(isPresented: $isPresentingCamera) {
+            CameraCaptureView { content in
+                isPresentingCamera = false
+                guard let content else { return }
+                Task { await saveDirectCaptureReportingErrors(content) }
+            }
+            .ignoresSafeArea()
         }
         .confirmationDialog(
             "Save possible sensitive content?",
@@ -308,10 +342,39 @@ struct RootView: View {
                         Label("Settings", systemImage: "gearshape")
                     }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            presentedSheet = .newText
+                        } label: {
+                            Label("New Text", systemImage: "text.badge.plus")
+                        }
+                        PhotosPicker(
+                            selection: $selectedPhoto,
+                            matching: .images,
+                            preferredItemEncoding: .current
+                        ) {
+                            Label("Choose Photo", systemImage: "photo.on.rectangle")
+                        }
+                        Button {
+                            requestCameraCapture()
+                        } label: {
+                            Label("Take Photo", systemImage: "camera")
+                        }
+                    } label: {
+                        if isLoadingDirectCapture {
+                            ProgressView()
+                        } else {
+                            Label("Add", systemImage: "plus")
+                        }
+                    }
+                    .disabled(isLoadingDirectCapture)
+                    .accessibilityHint("Adds text or a photo directly to Pocket Tray")
+                }
                 if section == .collections {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { presentedSheet = .createCollection } label: {
-                            Label("New Collection", systemImage: "plus")
+                            Label("New Collection", systemImage: "folder.badge.plus")
                         }
                     }
                 }
@@ -397,7 +460,7 @@ struct RootView: View {
             ContentUnavailableView {
                 Label("Your tray is empty", systemImage: "tray")
             } description: {
-                Text("Copy something in another app, or share text, an image, or a PDF to Pocket Tray.")
+                Text("Tap Add to save text or a photo, or copy and share something from another app.")
             }
         case .pinned:
             ContentUnavailableView(
@@ -762,6 +825,57 @@ struct RootView: View {
             presentedSheet = nil
             capture(content)
         }
+    }
+
+    private func loadSelectedPhoto(_ selection: PhotosPickerItem) async {
+        isLoadingDirectCapture = true
+        defer {
+            isLoadingDirectCapture = false
+            selectedPhoto = nil
+        }
+        do {
+            let content = try await DirectPhotoLoader.load(selection)
+            try await saveDirectCapture(content)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func requestCameraCapture() {
+        guard CameraAccess.isAvailable else {
+            errorMessage = "A camera isn't available on this device."
+            return
+        }
+        Task {
+            if await CameraAccess.requestIfNeeded() {
+                isPresentingCamera = true
+            } else {
+                isShowingCameraPermissionHelp = true
+            }
+        }
+    }
+
+    private func saveDirectCapture(_ content: CaptureContent) async throws {
+        if let item = try await DirectCaptureService(tray: tray).capture(content) {
+            await directCaptureDidSave(item)
+        }
+    }
+
+    private func saveDirectCaptureReportingErrors(_ content: CaptureContent) async {
+        do {
+            try await saveDirectCapture(content)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func directCaptureDidSave(_ item: TrayItem) async {
+        showFeedback(
+            "Saved to Pocket Tray",
+            collectionItem: !snapshot.collections.isEmpty && item.collectionID == nil ? item : nil
+        )
+        await reload()
+        await refreshStorageWarning()
     }
 
     private func showFeedback(
