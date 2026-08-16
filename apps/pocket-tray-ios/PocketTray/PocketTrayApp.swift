@@ -11,7 +11,7 @@ struct PocketTrayApp: App {
         } catch {
             repository = UnavailableTrayRepository()
         }
-        tray = Tray(repository: repository)
+        tray = Tray(repository: repository, analyzer: AppleContentAnalyzer())
     }
 
     var body: some Scene {
