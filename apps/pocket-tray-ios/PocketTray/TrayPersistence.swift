@@ -71,17 +71,13 @@ actor FileTrayRepository: TrayRepository {
     func apply(_ mutation: TrayMutation) throws -> TrayMutationResult {
         try Task.checkCancellation()
         var createdAsset: TrayAsset?
-        if case let .capture(_, assetWrite: assetWrite?) = mutation {
-            do {
+        do {
+            if case let .capture(_, assetWrite: assetWrite?) = mutation {
                 if try assetStore.persist(assetWrite) {
                     createdAsset = assetWrite.asset
                 }
                 try Task.checkCancellation()
-            } catch {
-                throw Self.actionableWriteError(error)
             }
-        }
-        do {
             return try updateStore { store in
                 store.apply(mutation)
             }
@@ -107,6 +103,7 @@ actor FileTrayRepository: TrayRepository {
     func storageReport(at date: Date) throws -> TrayStorageReport {
         try migrateLegacyFileIfNeeded()
         let store = try loadStore(at: fileURL)
+        try? assetStore.removeUnreferencedAssets(keeping: store.items.compactMap(\.asset))
         let assets = Dictionary(
             store.items.compactMap(\.asset).map { ($0.digest, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -177,8 +174,8 @@ actor FileTrayRepository: TrayRepository {
             var store = try loadStore(at: coordinatedURL)
             let value = try operation(&store)
             let data = try JSONEncoder().encode(store)
-            try metadataWriter.write(data, to: backupURL(for: coordinatedURL))
             try metadataWriter.write(data, to: coordinatedURL)
+            try? metadataWriter.write(data, to: backupURL(for: coordinatedURL))
             try? assetStore.removeUnreferencedAssets(keeping: store.items.compactMap(\.asset))
             return value
         }
@@ -189,19 +186,47 @@ actor FileTrayRepository: TrayRepository {
     }
 
     private func migrateLegacyFileIfNeeded() throws {
-        guard
-            !fileManager.fileExists(atPath: fileURL.path),
-            let legacyFileURL,
-            fileManager.fileExists(atPath: legacyFileURL.path)
-        else {
-            return
-        }
+        guard let legacyFileURL else { return }
 
+        if
+            !fileManager.fileExists(atPath: fileURL.path),
+            fileManager.fileExists(atPath: legacyFileURL.path)
+        {
+            try fileManager.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try fileManager.copyItem(at: legacyFileURL, to: fileURL)
+        }
+        try migrateLegacyAssets(from: legacyFileURL)
+    }
+
+    private func migrateLegacyAssets(from legacyFileURL: URL) throws {
+        let legacyAssetsURL = legacyFileURL.deletingLastPathComponent()
+            .appending(path: "assets", directoryHint: .isDirectory)
+        guard fileManager.fileExists(atPath: legacyAssetsURL.path) else { return }
         try fileManager.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
+            at: assetStore.directoryURL,
             withIntermediateDirectories: true
         )
-        try fileManager.copyItem(at: legacyFileURL, to: fileURL)
+        for sourceURL in try fileManager.contentsOfDirectory(
+            at: legacyAssetsURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            guard try sourceURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+                continue
+            }
+            let destinationURL = assetStore.directoryURL.appending(path: sourceURL.lastPathComponent)
+            guard !fileManager.fileExists(atPath: destinationURL.path) else { continue }
+            do {
+                try fileManager.copyItem(at: sourceURL, to: destinationURL)
+            } catch {
+                if !fileManager.fileExists(atPath: destinationURL.path) {
+                    throw error
+                }
+            }
+        }
     }
 
     private func coordinateWriting<Value>(
@@ -216,13 +241,13 @@ actor FileTrayRepository: TrayRepository {
         ) { coordinatedURL in
             operationResult = Result { try operation(coordinatedURL) }
         }
+        if let operationResult {
+            return try operationResult.get()
+        }
         if let coordinationError {
             throw coordinationError
         }
-        guard let operationResult else {
-            throw TrayPersistenceError.coordinationFailed
-        }
-        return try operationResult.get()
+        throw TrayPersistenceError.coordinationFailed
     }
 
     private static func actionableWriteError(_ error: Error) -> Error {

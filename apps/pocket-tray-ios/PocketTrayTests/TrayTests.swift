@@ -646,6 +646,11 @@ final class TrayTests: XCTestCase {
         let relaunched = Tray(repository: FileTrayRepository(fileURL: fileURL))
         let recent = try await relaunched.recent()
         XCTAssertEqual(recent, [committed])
+
+        try Data("corrupted after failed write".utf8).write(to: fileURL)
+        let recovered = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        let recoveredRecent = try await recovered.recent()
+        XCTAssertEqual(recoveredRecent, [committed])
     }
 
     func testLifecycleStateSurvivesRepositoryRelaunch() async throws {

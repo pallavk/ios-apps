@@ -63,7 +63,12 @@ struct AssetStore: Sendable {
             }
             throw error
         }
-        _ = try validatedData(for: write.asset)
+        do {
+            _ = try validatedData(for: write.asset)
+        } catch {
+            try? FileManager.default.removeItem(at: finalURL)
+            throw error
+        }
         return true
     }
 

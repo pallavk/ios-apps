@@ -266,6 +266,36 @@ final class ImageCaptureTests: XCTestCase {
         XCTAssertEqual(recent.first?.id, item.id)
     }
 
+    func testSharedRepositoryMigrationPreservesLegacyOriginalAssets() async throws {
+        let root = try temporaryRoot()
+        let legacyURL = root.appending(path: "Private/tray.json")
+        let sharedURL = root.appending(path: "Shared/tray.json")
+        let original = try await Tray(
+            repository: FileTrayRepository(fileURL: legacyURL)
+        ).capture(
+            .image(
+                ImagePayload(
+                    data: onePixelPNG,
+                    typeIdentifier: UTType.png.identifier,
+                    filename: "legacy.png"
+                )
+            )
+        )
+
+        let migratedTray = Tray(
+            repository: FileTrayRepository(
+                fileURL: sharedURL,
+                legacyFileURL: legacyURL
+            )
+        )
+        let recent = try await migratedTray.recent()
+        let resource = try await migratedTray.assetResource(for: original)
+
+        XCTAssertEqual(recent.map(\.id), [original.id])
+        XCTAssertEqual(resource.data, onePixelPNG)
+        XCTAssertTrue(resource.url.path.hasPrefix(root.appending(path: "Shared").path))
+    }
+
     func testMissingAndCorruptAssetsRemainRecordsButCannotBeRead() async throws {
         let root = try temporaryRoot()
         let tray = Tray(
