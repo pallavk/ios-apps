@@ -24,12 +24,14 @@ enum TrayError: Error, Equatable, LocalizedError {
 }
 
 enum CaptureContent: Equatable, Sendable {
+    case image(ImagePayload)
     case text(String)
     case url(URL)
     case unsupported
 }
 
 enum TrayItemKind: String, Codable, Equatable, Sendable {
+    case image
     case text
     case url
 }
@@ -54,6 +56,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
     private(set) var title: String?
     private(set) var note: String?
     private(set) var collectionID: UUID?
+    private(set) var asset: TrayAsset?
     private(set) var deduplicationKeys: Set<String>
     private(set) var expiresAt: Date?
     private(set) var state: TrayItemState
@@ -69,6 +72,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         title: String? = nil,
         note: String? = nil,
         collectionID: UUID? = nil,
+        asset: TrayAsset? = nil,
         deduplicationKeys: Set<String>? = nil,
         expiresAt: Date? = nil,
         state: TrayItemState = .recent,
@@ -83,7 +87,8 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         self.title = title
         self.note = note
         self.collectionID = collectionID
-        self.deduplicationKeys = deduplicationKeys ?? [text]
+        self.asset = asset
+        self.deduplicationKeys = deduplicationKeys ?? [asset?.digest ?? text]
         self.expiresAt = expiresAt
         self.state = state
         self.trashedAt = trashedAt
@@ -99,6 +104,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         case title
         case note
         case collectionID
+        case asset
         case deduplicationKeys
         case deduplicationKey
         case expiresAt
@@ -117,12 +123,13 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         title = try container.decodeIfPresent(String.self, forKey: .title)
         note = try container.decodeIfPresent(String.self, forKey: .note)
         collectionID = try container.decodeIfPresent(UUID.self, forKey: .collectionID)
+        asset = try container.decodeIfPresent(TrayAsset.self, forKey: .asset)
         if let storedKeys = try container.decodeIfPresent(Set<String>.self, forKey: .deduplicationKeys) {
-            deduplicationKeys = storedKeys.union([text])
+            deduplicationKeys = storedKeys.union([asset?.digest ?? text])
         } else if let legacyKey = try container.decodeIfPresent(String.self, forKey: .deduplicationKey) {
-            deduplicationKeys = [legacyKey, text]
+            deduplicationKeys = [legacyKey, asset?.digest ?? text]
         } else {
-            deduplicationKeys = [text]
+            deduplicationKeys = [asset?.digest ?? text]
         }
         state = try container.decodeIfPresent(TrayItemState.self, forKey: .state) ?? .recent
         trashedAt = try container.decodeIfPresent(Date.self, forKey: .trashedAt)
@@ -147,6 +154,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         try container.encodeIfPresent(title, forKey: .title)
         try container.encodeIfPresent(note, forKey: .note)
         try container.encodeIfPresent(collectionID, forKey: .collectionID)
+        try container.encodeIfPresent(asset, forKey: .asset)
         try container.encode(deduplicationKeys, forKey: .deduplicationKeys)
         try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
         try container.encode(state, forKey: .state)
@@ -174,9 +182,11 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
 
     func applying(_ edits: TrayItemEdits) -> TrayItem {
         var updated = self
-        updated.kind = edits.kind
-        updated.text = edits.text
-        updated.deduplicationKeys.insert(edits.text)
+        if asset == nil {
+            updated.kind = edits.kind
+            updated.text = edits.text
+            updated.deduplicationKeys.insert(edits.text)
+        }
         updated.title = edits.title
         updated.note = edits.note
         updated.collectionID = edits.collectionID
@@ -247,7 +257,7 @@ struct TrayStore: Codable, Equatable, Sendable {
 }
 
 enum TrayMutation: Sendable {
-    case capture(TrayItem)
+    case capture(TrayItem, assetWrite: TrayAssetWrite?)
     case setPinned(UUID, Bool, Date)
     case moveToTrash(UUID, Date)
     case restore(UUID, Date)
@@ -320,7 +330,18 @@ struct Tray: Sendable {
     func capture(_ content: CaptureContent) async throws -> TrayItem {
         let kind: TrayItemKind
         let text: String
+        let assetWrite: TrayAssetWrite?
         switch content {
+        case let .image(payload):
+            let write = try ImageAssetFactory.makeWrite(from: payload)
+            kind = .image
+            let suggestedName = payload.filename?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let suggestedName, !suggestedName.isEmpty {
+                text = suggestedName
+            } else {
+                text = "Image"
+            }
+            assetWrite = write
         case let .text(value):
             if let url = Self.webURL(from: value) {
                 kind = .url
@@ -329,12 +350,14 @@ struct Tray: Sendable {
                 kind = .text
                 text = value
             }
+            assetWrite = nil
         case let .url(url):
             guard Self.isWebURL(url) else {
                 throw TrayError.unsupportedContent
             }
             kind = .url
             text = url.absoluteString
+            assetWrite = nil
         case .unsupported:
             throw TrayError.unsupportedContent
         }
@@ -347,9 +370,12 @@ struct Tray: Sendable {
             kind: kind,
             text: text,
             capturedAt: capturedAt,
+            asset: assetWrite?.asset,
             expiresAt: capturedAt.addingTimeInterval(TrayRetention.recent)
         )
-        guard let saved = try await repository.apply(.capture(item)).item else {
+        guard let saved = try await repository.apply(
+            .capture(item, assetWrite: assetWrite)
+        ).item else {
             throw TrayError.itemNotFound
         }
         return saved
@@ -530,7 +556,7 @@ struct TraySnapshot: Equatable, Sendable {
 extension TrayStore {
     mutating func apply(_ mutation: TrayMutation) -> TrayMutationResult {
         switch mutation {
-        case let .capture(item):
+        case let .capture(item, assetWrite: _):
             .item(items.saveCapture(item))
         case let .setPinned(id, isPinned, date):
             .item(items.setPinned(id, to: isPinned, at: date))
