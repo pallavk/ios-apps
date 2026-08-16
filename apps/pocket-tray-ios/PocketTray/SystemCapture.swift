@@ -167,6 +167,24 @@ struct PocketTrayAppShortcuts: AppShortcutsProvider {
             shortTitle: "Save Clipboard",
             systemImageName: "tray.and.arrow.down"
         )
+        AppShortcut(
+            intent: CopySavedObjectIntent(),
+            phrases: [
+                "Copy \(\.$object) from \(.applicationName)",
+                "Reuse \(\.$object) with \(.applicationName)"
+            ],
+            shortTitle: "Copy Object",
+            systemImageName: "doc.on.doc"
+        )
+        AppShortcut(
+            intent: OpenSavedObjectIntent(),
+            phrases: [
+                "Open \(\.$target) in \(.applicationName)",
+                "Show \(\.$target) in \(.applicationName)"
+            ],
+            shortTitle: "Open Object",
+            systemImageName: "arrow.up.forward.app"
+        )
     }
 
     static var shortcutTileColor: ShortcutTileColor { .blue }

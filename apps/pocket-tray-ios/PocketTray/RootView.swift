@@ -138,6 +138,7 @@ struct RootView: View {
             await refreshStorageWarning()
             await refreshClipboardAvailability()
             presentControlCaptureIfRequested()
+            await presentSavedObjectIfRequested()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -146,6 +147,7 @@ struct RootView: View {
                     await refreshStorageWarning()
                     await refreshClipboardAvailability()
                     presentControlCaptureIfRequested()
+                    await presentSavedObjectIfRequested()
                 }
             } else {
                 sensitivePreviewSession.endForegroundSession()
@@ -733,6 +735,20 @@ struct RootView: View {
     private func presentControlCaptureIfRequested() {
         if ControlCaptureHandoff.consumeCaptureRequest() {
             presentedSheet = .systemCapture
+        }
+    }
+
+    private func presentSavedObjectIfRequested() async {
+        guard let itemID = SavedObjectOpenHandoff.consumeOpenRequest() else { return }
+        do {
+            let item = try await SavedObjectShortcutService(
+                tray: tray,
+                clipboard: clipboard,
+                isAppLockEnabled: { false }
+            ).resolve(id: itemID)
+            presentedSheet = .editItem(item)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

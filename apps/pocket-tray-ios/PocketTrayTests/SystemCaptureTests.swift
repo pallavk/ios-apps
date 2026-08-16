@@ -9,6 +9,16 @@ final class SystemCaptureTests: XCTestCase {
         func readCurrentContent() async -> CaptureContent { content }
     }
 
+    private actor ClipboardRecorder: TextClipboard {
+        private var copiedValues: [String] = []
+
+        func copy(_ text: String) {
+            copiedValues.append(text)
+        }
+
+        func values() -> [String] { copiedValues }
+    }
+
     func testShortcutCaptureUsesTrayURLNormalizationAndDeduplication() async throws {
         let repository = InMemoryTrayRepository()
         let tray = Tray(repository: repository)
@@ -118,5 +128,183 @@ final class SystemCaptureTests: XCTestCase {
 
         XCTAssertTrue(ControlCaptureHandoff.consumeCaptureRequest())
         XCTAssertFalse(ControlCaptureHandoff.consumeCaptureRequest())
+    }
+
+    func testSavedObjectOpenRequestIsConsumedExactlyOnce() {
+        _ = SavedObjectOpenHandoff.consumeOpenRequest()
+        let itemID = UUID()
+
+        SavedObjectOpenHandoff.requestOpen(id: itemID)
+
+        XCTAssertEqual(SavedObjectOpenHandoff.consumeOpenRequest(), itemID)
+        XCTAssertNil(SavedObjectOpenHandoff.consumeOpenRequest())
+    }
+
+    func testSavedObjectSuggestionsPrioritizePinnedTextAndLinksAndHideSensitiveOrMedia() async throws {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let olderText = TrayItem(
+            id: UUID(),
+            text: "Reusable text",
+            capturedAt: now.addingTimeInterval(-20),
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        let newerLink = TrayItem(
+            id: UUID(),
+            kind: .url,
+            text: "https://example.com/newer",
+            capturedAt: now.addingTimeInterval(-10),
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        let pinnedText = TrayItem(
+            id: UUID(),
+            text: "Pinned reusable text",
+            capturedAt: now.addingTimeInterval(-30),
+            isPinned: true
+        )
+        let sensitiveText = TrayItem(
+            id: UUID(),
+            text: "Verification code: 739201",
+            capturedAt: now.addingTimeInterval(-5),
+            sensitivity: SensitivityAssessment(reasons: [.oneTimeCode]),
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        let acknowledgedText = TrayItem(
+            id: UUID(),
+            text: "Acknowledged reusable text",
+            capturedAt: now.addingTimeInterval(-8),
+            sensitivity: SensitivityAssessment(reasons: [.oneTimeCode], isOverridden: true),
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        let image = TrayItem(
+            id: UUID(),
+            kind: .image,
+            text: "Screenshot",
+            capturedAt: now,
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        let service = SavedObjectShortcutService(
+            tray: Tray(
+                repository: InMemoryTrayRepository(
+                    items: [olderText, newerLink, pinnedText, sensitiveText, acknowledgedText, image]
+                ),
+                now: { now }
+            ),
+            clipboard: SystemTextClipboard(),
+            isAppLockEnabled: { false }
+        )
+
+        let suggestions = try await service.suggestedItems()
+
+        XCTAssertEqual(
+            suggestions.map(\.id),
+            [pinnedText.id, acknowledgedText.id, newerLink.id, olderText.id]
+        )
+    }
+
+    func testSavedObjectResolutionRejectsMissingExpiredTrashedSensitiveAndMediaItems() async throws {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let available = TrayItem(
+            id: UUID(),
+            text: "Available",
+            capturedAt: now,
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        let trashed = TrayItem(
+            id: UUID(),
+            text: "Trashed",
+            capturedAt: now,
+            state: .trash,
+            trashedAt: now
+        )
+        let expired = TrayItem(
+            id: UUID(),
+            text: "Expired",
+            capturedAt: now.addingTimeInterval(-TrayRetention.recent),
+            expiresAt: now.addingTimeInterval(-1)
+        )
+        let sensitive = TrayItem(
+            id: UUID(),
+            text: "Verification code: 739201",
+            capturedAt: now,
+            sensitivity: SensitivityAssessment(reasons: [.oneTimeCode]),
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        let image = TrayItem(
+            id: UUID(),
+            kind: .image,
+            text: "Image",
+            capturedAt: now,
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        let service = SavedObjectShortcutService(
+            tray: Tray(
+                repository: InMemoryTrayRepository(
+                    items: [available, trashed, expired, sensitive, image]
+                ),
+                now: { now }
+            ),
+            clipboard: SystemTextClipboard(),
+            isAppLockEnabled: { false }
+        )
+
+        let resolved = try await service.resolve(id: available.id)
+
+        XCTAssertEqual(resolved.id, available.id)
+        for unavailableID in [UUID(), trashed.id, expired.id, sensitive.id, image.id] {
+            do {
+                _ = try await service.resolve(id: unavailableID)
+                XCTFail("Expected unavailable object \(unavailableID) to be rejected")
+            } catch {
+                XCTAssertEqual(error as? SavedObjectShortcutError, .itemUnavailable)
+            }
+        }
+    }
+
+    func testSavedObjectCopyUsesCurrentPersistedValue() async throws {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let item = TrayItem(
+            id: UUID(),
+            kind: .url,
+            text: "https://example.com/current",
+            capturedAt: now,
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        let clipboard = ClipboardRecorder()
+        let service = SavedObjectShortcutService(
+            tray: Tray(repository: InMemoryTrayRepository(items: [item]), now: { now }),
+            clipboard: clipboard,
+            isAppLockEnabled: { false }
+        )
+
+        let copied = try await service.copy(id: item.id)
+        let copiedValues = await clipboard.values()
+
+        XCTAssertEqual(copied.id, item.id)
+        XCTAssertEqual(copiedValues, ["https://example.com/current"])
+    }
+
+    func testSavedObjectShortcutsAreUnavailableWhileAppLockIsEnabled() async throws {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let item = TrayItem(
+            id: UUID(),
+            text: "Private reusable text",
+            capturedAt: now,
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        let clipboard = ClipboardRecorder()
+        let service = SavedObjectShortcutService(
+            tray: Tray(repository: InMemoryTrayRepository(items: [item]), now: { now }),
+            clipboard: clipboard,
+            isAppLockEnabled: { true }
+        )
+
+        do {
+            _ = try await service.copy(id: item.id)
+            XCTFail("Expected App Lock to block shortcut access")
+        } catch {
+            XCTAssertEqual(error as? SavedObjectShortcutError, .appLockEnabled)
+        }
+        let copiedValues = await clipboard.values()
+        XCTAssertTrue(copiedValues.isEmpty)
     }
 }

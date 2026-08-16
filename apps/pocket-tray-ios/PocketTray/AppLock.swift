@@ -1,6 +1,15 @@
+import AppIntents
 import Foundation
 import LocalAuthentication
 import SwiftUI
+
+enum AppLockPreference {
+    static let key = "appLock.isEnabled"
+
+    static var isEnabled: Bool {
+        UserDefaults(suiteName: FileTrayRepository.appGroupIdentifier)?.bool(forKey: key) ?? false
+    }
+}
 
 @MainActor
 protocol AppLockSettings: AnyObject {
@@ -9,10 +18,6 @@ protocol AppLockSettings: AnyObject {
 
 @MainActor
 final class UserDefaultsAppLockSettings: AppLockSettings {
-    private enum Key {
-        static let isEnabled = "appLock.isEnabled"
-    }
-
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults? = UserDefaults(suiteName: FileTrayRepository.appGroupIdentifier)) {
@@ -20,8 +25,8 @@ final class UserDefaultsAppLockSettings: AppLockSettings {
     }
 
     var isAppLockEnabled: Bool {
-        get { defaults.bool(forKey: Key.isEnabled) }
-        set { defaults.set(newValue, forKey: Key.isEnabled) }
+        get { defaults.bool(forKey: AppLockPreference.key) }
+        set { defaults.set(newValue, forKey: AppLockPreference.key) }
     }
 }
 
@@ -179,6 +184,12 @@ struct AppLockSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Shortcuts") {
+                    ShortcutsLink()
+                    Text("Use Pocket Tray actions from Shortcuts, Siri, Spotlight, the Action button, or Home Screen widgets.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 Section("Storage") {
                     if let storageReport {
                         LabeledContent("Pocket Tray usage") {
