@@ -1,4 +1,5 @@
 import XCTest
+import ImageIO
 import UIKit
 import UniformTypeIdentifiers
 @testable import PocketTray
@@ -96,5 +97,37 @@ final class ImagePayloadTests: XCTestCase {
 
         XCTAssertEqual(write.asset.typeIdentifier, "public.png")
         XCTAssertEqual(write.asset.fileExtension, "png")
+    }
+
+    func testImagePayloadAcceptsAReadableHEICFrame() throws {
+        let data = NSMutableData()
+        let destination = try XCTUnwrap(
+            CGImageDestinationCreateWithData(
+                data,
+                UTType.heic.identifier as CFString,
+                1,
+                nil
+            )
+        )
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        CGImageDestinationAddImage(destination, try XCTUnwrap(image.cgImage), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let heicData = data as Data
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(heicData as CFData, nil))
+        XCTAssertNotNil(CGImageSourceCreateImageAtIndex(source, 0, nil))
+
+        let write = try ImageAssetFactory.makeWrite(
+            from: ImagePayload(
+                data: heicData,
+                typeIdentifier: UTType.heic.identifier,
+                filename: "photo.heic"
+            )
+        )
+
+        XCTAssertEqual(write.asset.typeIdentifier, UTType.heic.identifier)
+        XCTAssertEqual(write.data, heicData)
     }
 }

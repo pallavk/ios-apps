@@ -116,7 +116,7 @@ enum ImageAssetFactory {
         }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceThumbnailMaxPixelSize: 1
+            kCGImageSourceThumbnailMaxPixelSize: 32
         ]
         guard CGImageSourceCreateThumbnailAtIndex(
             source,
