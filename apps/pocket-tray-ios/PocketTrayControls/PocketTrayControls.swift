@@ -13,11 +13,11 @@ struct CaptureClipboardControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "com.pallavk.PocketTray.captureClipboard") {
             ControlWidgetButton(action: OpenPocketTrayForCaptureIntent()) {
-                Label("Save Clipboard", systemImage: "tray.and.arrow.down")
+                Label("Capture Clipboard", systemImage: "tray.and.arrow.down")
             }
         }
-        .displayName("Save Clipboard")
-        .description("Open Pocket Tray to deliberately save the current clipboard.")
+        .displayName("Capture Clipboard")
+        .description("Open Pocket Tray's private clipboard capture prompt.")
     }
 }
 
@@ -29,6 +29,7 @@ struct OpenPocketTrayForCaptureIntent: AppIntent {
     static let openAppWhenRun = true
 
     func perform() async throws -> some IntentResult {
-        .result()
+        ControlCaptureHandoff.requestCapture()
+        return .result()
     }
 }

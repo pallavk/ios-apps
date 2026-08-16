@@ -9,6 +9,7 @@ struct RootView: View {
         case previewPDF(TrayItem)
         case renameCollection(TrayCollection)
         case settings
+        case systemCapture
 
         var id: String {
             switch self {
@@ -18,6 +19,7 @@ struct RootView: View {
             case let .previewPDF(item): "preview-pdf-\(item.id)"
             case let .renameCollection(collection): "rename-collection-\(collection.id)"
             case .settings: "settings"
+            case .systemCapture: "system-capture"
             }
         }
     }
@@ -53,6 +55,7 @@ struct RootView: View {
     let tray: Tray
     private let clipboard: any TextClipboard
     private let clipboardAvailabilityChecker: any ClipboardAvailabilityChecking
+    private let clipboardContentReader: any ClipboardContentReading
     private let appLockController: AppLockController
 
     @State private var selectedSection = Section.recent
@@ -71,11 +74,13 @@ struct RootView: View {
         tray: Tray,
         clipboard: any TextClipboard = SystemTextClipboard(),
         clipboardAvailabilityChecker: any ClipboardAvailabilityChecking = SystemClipboardAvailabilityChecker(),
+        clipboardContentReader: any ClipboardContentReading = SystemClipboardContentReader(),
         appLockController: AppLockController = AppLockController()
     ) {
         self.tray = tray
         self.clipboard = clipboard
         self.clipboardAvailabilityChecker = clipboardAvailabilityChecker
+        self.clipboardContentReader = clipboardContentReader
         self.appLockController = appLockController
     }
 
@@ -90,12 +95,14 @@ struct RootView: View {
         .task {
             await reload()
             await refreshClipboardAvailability()
+            presentControlCaptureIfRequested()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task {
                     await reload()
                     await refreshClipboardAvailability()
+                    presentControlCaptureIfRequested()
                 }
             } else {
                 sensitivePreviewSession.endForegroundSession()
@@ -126,6 +133,8 @@ struct RootView: View {
                 }
             case .settings:
                 AppLockSettingsView(controller: appLockController)
+            case .systemCapture:
+                ControlCapturePrompt { captureCurrentClipboard() }
             }
         }
         .alert("Pocket Tray couldn't complete that", isPresented: isShowingError) {
@@ -556,8 +565,12 @@ struct RootView: View {
             errorMessage = TrayError.emptyText.localizedDescription
             return
         }
+        capture(.text(text))
+    }
+
+    private func capture(_ content: CaptureContent) {
         do {
-            let prepared = try tray.prepareCapture(.text(text))
+            let prepared = try tray.prepareCapture(content)
             if prepared.item.protectsSensitivePreview {
                 pendingSensitiveCapture = prepared
             } else {
@@ -710,6 +723,40 @@ struct RootView: View {
 
     private func refreshClipboardAvailability() async {
         hasSupportedClipboardContent = await clipboardAvailabilityChecker.hasSupportedContent()
+    }
+
+    private func presentControlCaptureIfRequested() {
+        if ControlCaptureHandoff.consumeCaptureRequest() {
+            presentedSheet = .systemCapture
+        }
+    }
+
+    private func captureCurrentClipboard() {
+        Task {
+            let content = await clipboardContentReader.readCurrentContent()
+            presentedSheet = nil
+            capture(content)
+        }
+    }
+}
+
+private struct ControlCapturePrompt: View {
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ContentUnavailableView {
+                Label("Capture Clipboard", systemImage: "tray.and.arrow.down")
+            } description: {
+                Text("Pocket Tray reads the clipboard only after you tap Save Clipboard.")
+            } actions: {
+                Button("Save Clipboard", action: onSave)
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityHint("Reads and saves supported text, links, images, or PDFs")
+            }
+            .navigationTitle("Clipboard")
+            .navigationBarTitleDisplayMode(.inline)
+        }
     }
 }
 

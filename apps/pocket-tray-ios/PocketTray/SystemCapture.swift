@@ -1,6 +1,7 @@
 import AppIntents
 import Foundation
 import UIKit
+import UniformTypeIdentifiers
 
 protocol ClipboardContentReading: Sendable {
     func readCurrentContent() async -> CaptureContent
@@ -27,8 +28,10 @@ struct SystemClipboardAvailabilityChecker: ClipboardAvailabilityChecking {
 }
 
 @MainActor
-private enum SystemClipboardSupport {
+enum SystemClipboardSupport {
     private enum Kind {
+        case image(String)
+        case pdf(String)
         case text
         case url
     }
@@ -39,6 +42,14 @@ private enum SystemClipboardSupport {
 
     static func read(from pasteboard: UIPasteboard) -> CaptureContent {
         switch supportedKind(in: pasteboard) {
+        case let .image(typeIdentifier):
+            pasteboard.data(forPasteboardType: typeIdentifier).map {
+                .image(ImagePayload(data: $0, typeIdentifier: typeIdentifier, filename: nil))
+            } ?? .unsupported
+        case let .pdf(typeIdentifier):
+            pasteboard.data(forPasteboardType: typeIdentifier).map {
+                .pdf(PDFPayload(data: $0, typeIdentifier: typeIdentifier, filename: nil))
+            } ?? .unsupported
         case .url:
             pasteboard.url.map(CaptureContent.url) ?? .unsupported
         case .text:
@@ -49,6 +60,16 @@ private enum SystemClipboardSupport {
     }
 
     private static func supportedKind(in pasteboard: UIPasteboard) -> Kind? {
+        if let typeIdentifier = pasteboard.types.first(where: {
+            UTType($0)?.conforms(to: .pdf) == true
+        }) {
+            return .pdf(typeIdentifier)
+        }
+        if let typeIdentifier = pasteboard.types.first(where: {
+            UTType($0)?.conforms(to: .image) == true
+        }) {
+            return .image(typeIdentifier)
+        }
         if pasteboard.hasURLs { return .url }
         if pasteboard.hasStrings { return .text }
         return nil
@@ -105,8 +126,8 @@ struct SaveClipboardIntent: AppIntent {
             return .result(dialog: "This clipboard may contain a secret. Open Pocket Tray and use Paste to review it before saving.")
         case .unsupported:
             return .result(dialog: "The clipboard does not contain supported text or a link.")
-        case .failed:
-            return .result(dialog: "Pocket Tray could not save the clipboard. Open the app and try again.")
+        case let .failed(message):
+            return .result(dialog: IntentDialog(stringLiteral: message))
         }
     }
 }
