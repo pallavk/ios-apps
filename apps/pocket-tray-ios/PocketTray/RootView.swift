@@ -8,6 +8,7 @@ struct RootView: View {
         case previewImage(TrayItem)
         case previewPDF(TrayItem)
         case renameCollection(TrayCollection)
+        case settings
 
         var id: String {
             switch self {
@@ -16,6 +17,7 @@ struct RootView: View {
             case let .previewImage(item): "preview-image-\(item.id)"
             case let .previewPDF(item): "preview-pdf-\(item.id)"
             case let .renameCollection(collection): "rename-collection-\(collection.id)"
+            case .settings: "settings"
             }
         }
     }
@@ -50,6 +52,7 @@ struct RootView: View {
 
     let tray: Tray
     private let clipboard: any TextClipboard
+    private let appLockController: AppLockController
 
     @State private var selectedSection = Section.recent
     @State private var snapshot = TraySnapshot.empty
@@ -62,9 +65,14 @@ struct RootView: View {
     @State private var pendingSensitiveCapture: PreparedTrayCapture?
     @State private var revealedSensitiveItemIDs: Set<UUID> = []
 
-    init(tray: Tray, clipboard: any TextClipboard = SystemTextClipboard()) {
+    init(
+        tray: Tray,
+        clipboard: any TextClipboard = SystemTextClipboard(),
+        appLockController: AppLockController = AppLockController()
+    ) {
         self.tray = tray
         self.clipboard = clipboard
+        self.appLockController = appLockController
     }
 
     var body: some View {
@@ -106,6 +114,8 @@ struct RootView: View {
                 ) {
                     await reload()
                 }
+            case .settings:
+                AppLockSettingsView(controller: appLockController)
             }
         }
         .alert("Pocket Tray couldn't complete that", isPresented: isShowingError) {
@@ -175,6 +185,11 @@ struct RootView: View {
             }
             .navigationTitle(section.title)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { presentedSheet = .settings } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                }
                 if section == .recent {
                     ToolbarItem(placement: .topBarTrailing) {
                         saveClipboardButton
@@ -657,6 +672,53 @@ struct RootView: View {
             snapshot = try await tray.snapshot(rescheduleMissingAnalysis: false)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct AppLockSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var controller: AppLockController
+    @State private var isChangingSetting = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Privacy") {
+                    Toggle(
+                        "Require Face ID or Passcode",
+                        isOn: Binding(
+                            get: { controller.isEnabled },
+                            set: { isEnabled in updateAppLock(isEnabled) }
+                        )
+                    )
+                    .disabled(isChangingSetting)
+                    Text("When enabled, Pocket Tray locks after you leave the app. Authentication uses Apple's system screen and supports the device passcode fallback.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if let errorMessage = controller.errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("app-lock-setting-error")
+                    }
+                }
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func updateAppLock(_ isEnabled: Bool) {
+        isChangingSetting = true
+        Task {
+            await controller.setEnabled(isEnabled)
+            isChangingSetting = false
         }
     }
 }
