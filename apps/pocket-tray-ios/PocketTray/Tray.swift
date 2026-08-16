@@ -308,6 +308,7 @@ private enum TrayRepositoryContractError: Error {
 
 protocol TrayRepository: Sendable {
     func apply(_ mutation: TrayMutation) async throws -> TrayMutationResult
+    func resource(for asset: TrayAsset) async throws -> TrayAssetResource
     func store(at date: Date) async throws -> TrayStore
 }
 
@@ -520,6 +521,13 @@ struct Tray: Sendable {
     func reuse(_ item: TrayItem, using clipboard: any TextClipboard) async throws {
         try await clipboard.copy(item.text)
     }
+
+    func assetResource(for item: TrayItem) async throws -> TrayAssetResource {
+        guard let asset = item.asset else {
+            throw TrayAssetError.missing
+        }
+        return try await repository.resource(for: asset)
+    }
 }
 
 struct TraySnapshot: Equatable, Sendable {
@@ -713,13 +721,31 @@ extension Array where Element == TrayItem {
 
 actor InMemoryTrayRepository: TrayRepository {
     private var store: TrayStore
+    private let assetStore: AssetStore
 
-    init(items: [TrayItem] = [], collections: [TrayCollection] = []) {
+    init(
+        items: [TrayItem] = [],
+        collections: [TrayCollection] = [],
+        assetDirectoryURL: URL = FileManager.default.temporaryDirectory
+            .appending(path: "PocketTrayTests-\(UUID().uuidString)"),
+        assetWriter: any AssetDataWriting = AtomicAssetDataWriter()
+    ) {
         self.store = TrayStore(items: items, collections: collections)
+        self.assetStore = AssetStore(
+            directoryURL: assetDirectoryURL,
+            writer: assetWriter
+        )
     }
 
-    func apply(_ mutation: TrayMutation) -> TrayMutationResult {
-        store.apply(mutation)
+    func apply(_ mutation: TrayMutation) throws -> TrayMutationResult {
+        if case let .capture(_, assetWrite: assetWrite?) = mutation {
+            try assetStore.persist(assetWrite)
+        }
+        return store.apply(mutation)
+    }
+
+    func resource(for asset: TrayAsset) throws -> TrayAssetResource {
+        try assetStore.resource(for: asset)
     }
 
     func store(at date: Date) -> TrayStore {

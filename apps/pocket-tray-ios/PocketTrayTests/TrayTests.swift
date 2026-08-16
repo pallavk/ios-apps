@@ -20,6 +20,10 @@ final class TrayTests: XCTestCase {
         func store(at date: Date) -> TrayStore {
             .empty
         }
+
+        func resource(for asset: TrayAsset) throws -> TrayAssetResource {
+            throw RepositoryFailure.unavailable
+        }
     }
 
     private actor RecordingClipboard: TextClipboard {

@@ -6,11 +6,22 @@ actor FileTrayRepository: TrayRepository {
     private let fileURL: URL
     private let legacyFileURL: URL?
     private let fileManager: FileManager
+    private let assetStore: AssetStore
 
-    init(fileURL: URL, legacyFileURL: URL? = nil) {
+    init(
+        fileURL: URL,
+        legacyFileURL: URL? = nil,
+        assetDirectoryURL: URL? = nil,
+        assetWriter: any AssetDataWriting = AtomicAssetDataWriter()
+    ) {
         self.fileURL = fileURL
         self.legacyFileURL = legacyFileURL
         self.fileManager = FileManager()
+        self.assetStore = AssetStore(
+            directoryURL: assetDirectoryURL
+                ?? fileURL.deletingLastPathComponent().appending(path: "assets"),
+            writer: assetWriter
+        )
     }
 
     static func applicationSupport() -> FileTrayRepository {
@@ -44,9 +55,16 @@ actor FileTrayRepository: TrayRepository {
     }
 
     func apply(_ mutation: TrayMutation) throws -> TrayMutationResult {
-        try updateStore { store in
+        if case let .capture(_, assetWrite: assetWrite?) = mutation {
+            try assetStore.persist(assetWrite)
+        }
+        return try updateStore { store in
             store.apply(mutation)
         }
+    }
+
+    func resource(for asset: TrayAsset) throws -> TrayAssetResource {
+        try assetStore.resource(for: asset)
     }
 
     func store(at date: Date) throws -> TrayStore {
@@ -141,6 +159,10 @@ actor UnavailableTrayRepository: TrayRepository {
     }
 
     func store(at date: Date) throws -> TrayStore {
+        throw TrayPersistenceError.appGroupUnavailable
+    }
+
+    func resource(for asset: TrayAsset) throws -> TrayAssetResource {
         throw TrayPersistenceError.appGroupUnavailable
     }
 }
