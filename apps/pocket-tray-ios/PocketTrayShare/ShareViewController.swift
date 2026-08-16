@@ -84,6 +84,10 @@ private final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProvi
         self.provider = provider
     }
 
+    var canLoadImage: Bool {
+        imageTypeIdentifier != nil
+    }
+
     var canLoadURL: Bool {
         provider.hasItemConformingToTypeIdentifier(UTType.url.identifier)
     }
@@ -91,6 +95,29 @@ private final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProvi
     var canLoadText: Bool {
         provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier)
             || provider.hasItemConformingToTypeIdentifier(UTType.text.identifier)
+    }
+
+    func loadImage() async throws -> ImagePayload {
+        guard let typeIdentifier = imageTypeIdentifier else {
+            throw ShareCaptureError.unsupported
+        }
+        let data = try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Data, Error>) in
+            provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: ShareCaptureError.unreadable)
+                }
+            }
+        }
+        return ImagePayload(
+            data: data,
+            typeIdentifier: typeIdentifier,
+            filename: provider.suggestedName
+        )
     }
 
     func loadURL() async throws -> URL {
@@ -130,6 +157,12 @@ private final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProvi
                     continuation.resume(throwing: ShareCaptureError.unreadable)
                 }
             }
+        }
+    }
+
+    private var imageTypeIdentifier: String? {
+        provider.registeredTypeIdentifiers.first { identifier in
+            UTType(identifier)?.conforms(to: .image) == true
         }
     }
 }

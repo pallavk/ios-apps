@@ -1,7 +1,32 @@
 import XCTest
+import UIKit
 @testable import PocketTray
 
 final class ImageCaptureTests: XCTestCase {
+    private struct ImageShareProvider: ShareItemProviding {
+        let payload: ImagePayload
+        let failsToLoad: Bool
+
+        var canLoadImage: Bool { true }
+        var canLoadURL: Bool { true }
+        var canLoadText: Bool { true }
+
+        func loadImage() async throws -> ImagePayload {
+            if failsToLoad {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            return payload
+        }
+
+        func loadURL() async throws -> URL {
+            URL(string: "https://wrong.example")!
+        }
+
+        func loadText() async throws -> String {
+            "wrong"
+        }
+    }
+
     private struct RejectingAssetWriter: AssetDataWriting {
         func write(_ data: Data, to finalURL: URL) throws {
             throw CocoaError(.fileWriteOutOfSpace)
@@ -266,6 +291,72 @@ final class ImageCaptureTests: XCTestCase {
         XCTAssertTrue(recent.isEmpty)
         let assetsURL = root.appending(path: "assets")
         XCTAssertFalse(FileManager.default.fileExists(atPath: assetsURL.path))
+    }
+
+    func testShareCapturePrefersImageRepresentation() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let item = try await ShareCapture(tray: tray).capture(
+            ImageShareProvider(
+                payload: ImagePayload(
+                    data: onePixelPNG,
+                    typeIdentifier: "public.png",
+                    filename: "shot.png"
+                ),
+                failsToLoad: false
+            )
+        )
+        let resource = try await tray.assetResource(for: item)
+
+        XCTAssertEqual(item.kind, .image)
+        XCTAssertEqual(item.asset?.typeIdentifier, "public.png")
+        XCTAssertEqual(resource.data, onePixelPNG)
+    }
+
+    func testUnreadableSharedImageCreatesNoObject() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let provider = ImageShareProvider(
+            payload: ImagePayload(
+                data: onePixelPNG,
+                typeIdentifier: "public.png",
+                filename: "shot.png"
+            ),
+            failsToLoad: true
+        )
+
+        do {
+            _ = try await ShareCapture(tray: tray).capture(provider)
+            XCTFail("Expected an unreadable share error")
+        } catch {
+            XCTAssertEqual(error as? ShareCaptureError, .unreadable)
+        }
+        let recent = try await tray.recent()
+        XCTAssertTrue(recent.isEmpty)
+    }
+
+    func testShareCapturePreservesJPEGRepresentationBytes() async throws {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2))
+        let image = renderer.image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }
+        let jpeg = try XCTUnwrap(image.jpegData(compressionQuality: 1))
+        let tray = Tray(repository: InMemoryTrayRepository())
+
+        let item = try await ShareCapture(tray: tray).capture(
+            ImageShareProvider(
+                payload: ImagePayload(
+                    data: jpeg,
+                    typeIdentifier: "public.jpeg",
+                    filename: "photo.jpg"
+                ),
+                failsToLoad: false
+            )
+        )
+        let resource = try await tray.assetResource(for: item)
+
+        XCTAssertEqual(item.kind, .image)
+        XCTAssertEqual(item.asset?.fileExtension, "jpeg")
+        XCTAssertEqual(resource.data, jpeg)
     }
 
     private func temporaryRoot() throws -> URL {

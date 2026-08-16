@@ -7,7 +7,7 @@ enum ShareCaptureError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupported:
-            "Pocket Tray supports shared text and web links."
+            "Pocket Tray supports shared images, text, and web links."
         case .unreadable:
             "Pocket Tray couldn't read the shared item."
         }
@@ -15,10 +15,20 @@ enum ShareCaptureError: Error, Equatable, LocalizedError {
 }
 
 protocol ShareItemProviding: Sendable {
+    var canLoadImage: Bool { get }
     var canLoadURL: Bool { get }
     var canLoadText: Bool { get }
+    func loadImage() async throws -> ImagePayload
     func loadURL() async throws -> URL
     func loadText() async throws -> String
+}
+
+extension ShareItemProviding {
+    var canLoadImage: Bool { false }
+
+    func loadImage() async throws -> ImagePayload {
+        throw ShareCaptureError.unsupported
+    }
 }
 
 struct ShareCapture: Sendable {
@@ -31,7 +41,9 @@ struct ShareCapture: Sendable {
     func capture(_ provider: any ShareItemProviding) async throws -> TrayItem {
         let content: CaptureContent
         do {
-            if provider.canLoadURL {
+            if provider.canLoadImage {
+                content = .image(try await provider.loadImage())
+            } else if provider.canLoadURL {
                 content = .url(try await provider.loadURL())
             } else if provider.canLoadText {
                 content = .text(try await provider.loadText())
