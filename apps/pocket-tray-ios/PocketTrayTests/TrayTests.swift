@@ -13,28 +13,12 @@ final class TrayTests: XCTestCase {
     }
 
     private actor FailingTrayRepository: TrayRepository {
-        func save(_ item: TrayItem) throws -> TrayItem {
+        func apply(_ mutation: TrayMutation) throws -> TrayMutationResult {
             throw RepositoryFailure.unavailable
         }
 
-        func items(at date: Date) -> [TrayItem] {
-            []
-        }
-
-        func setPinned(_ id: UUID, to isPinned: Bool, at date: Date) throws -> TrayItem? {
-            throw RepositoryFailure.unavailable
-        }
-
-        func moveToTrash(_ id: UUID, at date: Date) throws -> TrayItem? {
-            throw RepositoryFailure.unavailable
-        }
-
-        func restore(_ id: UUID, at date: Date) throws -> TrayItem? {
-            throw RepositoryFailure.unavailable
-        }
-
-        func deletePermanently(_ id: UUID) throws -> Bool {
-            throw RepositoryFailure.unavailable
+        func store(at date: Date) -> TrayStore {
+            .empty
         }
     }
 
@@ -180,6 +164,107 @@ final class TrayTests: XCTestCase {
         XCTAssertEqual(recaptured.note, "Use in the report")
         XCTAssertEqual(recaptured.collectionID, collectionID)
         XCTAssertNil(recaptured.expiresAt)
+    }
+
+    func testEditingTextAndMetadataPreservesDeduplicationIdentity() async throws {
+        let repository = InMemoryTrayRepository()
+        let captured = try await Tray(
+            repository: repository,
+            now: { Date(timeIntervalSince1970: 1_000) }
+        ).capture(.text("Original capture"))
+        let tray = Tray(
+            repository: repository,
+            now: { Date(timeIntervalSince1970: 2_000) }
+        )
+
+        let edited = try await tray.edit(
+            captured.id,
+            text: "Edited text",
+            title: "Reference",
+            note: "Keep this wording",
+            collectionID: nil
+        )
+        let recaptured = try await tray.capture(.text("Original capture"))
+        let recapturedEditedValue = try await tray.capture(.text("Edited text"))
+        let recent = try await tray.recent()
+
+        XCTAssertEqual(edited.id, captured.id)
+        XCTAssertEqual(recaptured.id, captured.id)
+        XCTAssertEqual(recapturedEditedValue.id, captured.id)
+        XCTAssertEqual(recaptured.text, "Edited text")
+        XCTAssertEqual(recaptured.title, "Reference")
+        XCTAssertEqual(recaptured.note, "Keep this wording")
+        XCTAssertEqual(recent, [recaptured])
+    }
+
+    func testCreatingACollectionAddsItToTheTraySnapshot() async throws {
+        let tray = Tray(
+            repository: InMemoryTrayRepository(),
+            now: { Date(timeIntervalSince1970: 1_000) }
+        )
+
+        let collection = try await tray.createCollection(named: "  Work  ")
+        let snapshot = try await tray.snapshot()
+
+        XCTAssertEqual(collection.name, "Work")
+        XCTAssertEqual(collection.createdAt, Date(timeIntervalSince1970: 1_000))
+        XCTAssertEqual(snapshot.collections, [collection])
+    }
+
+    func testAssigningACollectionDoesNotChangePinState() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let collection = try await tray.createCollection(named: "Projects")
+        let captured = try await tray.capture(.text("Launch notes"))
+        _ = try await tray.setPinned(captured.id, to: true)
+
+        let assigned = try await tray.assign(captured.id, to: collection.id)
+
+        XCTAssertEqual(assigned.collectionID, collection.id)
+        XCTAssertTrue(assigned.isPinned)
+    }
+
+    func testRenamingAndDeletingACollectionPreservesItsObjects() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let collection = try await tray.createCollection(named: "Drafts")
+        let captured = try await tray.capture(.text("Keep the object"))
+        _ = try await tray.assign(captured.id, to: collection.id)
+
+        let renamed = try await tray.renameCollection(collection.id, to: "Reference")
+        try await tray.deleteCollection(collection.id)
+        let snapshot = try await tray.snapshot()
+
+        XCTAssertEqual(renamed.name, "Reference")
+        XCTAssertEqual(snapshot.collections, [])
+        XCTAssertEqual(snapshot.recent.count, 1)
+        XCTAssertNil(snapshot.recent.first?.collectionID)
+    }
+
+    func testSearchCoversTextURLsTitlesNotesAndCollectionNames() async throws {
+        let repository = InMemoryTrayRepository()
+        let tray = Tray(repository: repository)
+        let collection = try await tray.createCollection(named: "Finance")
+        let textItem = try await tray.capture(.text("Meeting transcript"))
+        _ = try await tray.edit(
+            textItem.id,
+            text: textItem.text,
+            title: "Quarterly review",
+            note: "Project Lantern"
+        )
+        _ = try await tray.assign(textItem.id, to: collection.id)
+        let url = try XCTUnwrap(URL(string: "https://example.com/guides"))
+        let urlItem = try await tray.capture(.url(url))
+
+        let byText = try await tray.search("transcript")
+        let byURL = try await tray.search("EXAMPLE.COM")
+        let byTitle = try await tray.search("quarterly")
+        let byNote = try await tray.search("lantern")
+        let byCollection = try await tray.search("finance")
+
+        XCTAssertEqual(byText.map(\.id), [textItem.id])
+        XCTAssertEqual(byURL.map(\.id), [urlItem.id])
+        XCTAssertEqual(byTitle.map(\.id), [textItem.id])
+        XCTAssertEqual(byNote.map(\.id), [textItem.id])
+        XCTAssertEqual(byCollection.map(\.id), [textItem.id])
     }
 
     func testRecaptureCollapsesDuplicatesCreatedByOlderVersions() async throws {
@@ -493,6 +578,41 @@ final class TrayTests: XCTestCase {
         XCTAssertEqual(trash.count, 1)
         XCTAssertEqual(trash.first?.id, captured.id)
         XCTAssertEqual(trash.first?.trashedAt, Date(timeIntervalSince1970: 2_000))
+    }
+
+    func testEditingAndCollectionsSurviveRepositoryRelaunch() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let fileURL = directory.appending(path: "tray.json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let firstLaunch = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        let collection = try await firstLaunch.createCollection(named: "Reference")
+        let captured = try await firstLaunch.capture(.text("Initial text"))
+        _ = try await firstLaunch.edit(
+            captured.id,
+            text: "Edited text",
+            title: "Saved title",
+            note: "Saved note",
+            collectionID: collection.id
+        )
+
+        let secondLaunch = Tray(
+            repository: FileTrayRepository(fileURL: fileURL)
+        )
+        let snapshot = try await secondLaunch.snapshot()
+        let recaptured = try await secondLaunch.capture(.text("Initial text"))
+        let recapturedEditedValue = try await secondLaunch.capture(.text("Edited text"))
+        let finalSnapshot = try await secondLaunch.snapshot()
+
+        XCTAssertEqual(snapshot.collections, [collection])
+        XCTAssertEqual(snapshot.recent.first?.text, "Edited text")
+        XCTAssertEqual(snapshot.recent.first?.title, "Saved title")
+        XCTAssertEqual(snapshot.recent.first?.note, "Saved note")
+        XCTAssertEqual(snapshot.recent.first?.collectionID, collection.id)
+        XCTAssertEqual(recaptured.id, captured.id)
+        XCTAssertEqual(recapturedEditedValue.id, captured.id)
+        XCTAssertEqual(recaptured.text, "Edited text")
+        XCTAssertEqual(finalSnapshot.recent.count, 1)
     }
 
     func testPersistenceReadsFromDirectoryContainingSpaces() async throws {

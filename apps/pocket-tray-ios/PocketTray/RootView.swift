@@ -2,15 +2,31 @@ import SwiftUI
 import UIKit
 
 struct RootView: View {
+    private enum SheetDestination: Identifiable {
+        case createCollection
+        case editItem(TrayItem)
+        case renameCollection(TrayCollection)
+
+        var id: String {
+            switch self {
+            case .createCollection: "create-collection"
+            case let .editItem(item): "edit-item-\(item.id)"
+            case let .renameCollection(collection): "rename-collection-\(collection.id)"
+            }
+        }
+    }
+
     private enum Section: CaseIterable, Hashable {
         case recent
         case pinned
+        case collections
         case trash
 
         var title: String {
             switch self {
             case .recent: "Recent"
             case .pinned: "Pinned"
+            case .collections: "Collections"
             case .trash: "Trash"
             }
         }
@@ -19,6 +35,7 @@ struct RootView: View {
             switch self {
             case .recent: "clock"
             case .pinned: "pin"
+            case .collections: "folder"
             case .trash: "trash"
             }
         }
@@ -34,6 +51,9 @@ struct RootView: View {
     @State private var snapshot = TraySnapshot.empty
     @State private var feedbackMessage: String?
     @State private var errorMessage: String?
+    @State private var searchText = ""
+    @State private var presentedSheet: SheetDestination?
+    @State private var pendingCollectionDeletion: TrayCollection?
     @State private var pendingPermanentDeletion: TrayItem?
 
     init(tray: Tray, clipboard: any TextClipboard = SystemTextClipboard()) {
@@ -53,6 +73,27 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task { await reload() }
+            }
+        }
+        .sheet(item: $presentedSheet) { destination in
+            switch destination {
+            case .createCollection:
+                CollectionEditor(title: "New Collection", initialName: "", tray: tray) {
+                    await reload()
+                }
+            case let .editItem(item):
+                ItemEditor(item: item, collections: snapshot.collections, tray: tray) {
+                    await reload()
+                }
+            case let .renameCollection(collection):
+                CollectionEditor(
+                    title: "Rename Collection",
+                    initialName: collection.name,
+                    tray: tray,
+                    collectionID: collection.id
+                ) {
+                    await reload()
+                }
             }
         }
         .alert("Pocket Tray couldn't complete that", isPresented: isShowingError) {
@@ -76,6 +117,20 @@ struct RootView: View {
         } message: {
             Text("This cannot be undone.")
         }
+        .confirmationDialog(
+            "Delete this collection?",
+            isPresented: isConfirmingCollectionDeletion,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Collection", role: .destructive) {
+                if let collection = pendingCollectionDeletion {
+                    deleteCollection(collection)
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingCollectionDeletion = nil }
+        } message: {
+            Text("Objects in it will remain in Pocket Tray.")
+        }
     }
 
     private func sectionNavigation(
@@ -84,10 +139,11 @@ struct RootView: View {
     ) -> some View {
         NavigationStack {
             Group {
-                if items.isEmpty {
-                    emptyState(for: section)
+                if section == .recent {
+                    sectionContent(section, items: items)
+                        .searchable(text: $searchText, prompt: "Search Pocket Tray")
                 } else {
-                    itemList(items, section: section)
+                    sectionContent(section, items: items)
                 }
             }
             .navigationTitle(section.title)
@@ -99,14 +155,35 @@ struct RootView: View {
                             .accessibilityHint("Saves the current clipboard text to Pocket Tray")
                     }
                 }
+                if section == .collections {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { presentedSheet = .createCollection } label: {
+                            Label("New Collection", systemImage: "plus")
+                        }
+                    }
+                }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func sectionContent(_ section: Section, items: [TrayItem]) -> some View {
+        if section == .collections {
+            collectionsContent
+        } else if section == .recent && !searchText.isEmpty && items.isEmpty {
+            ContentUnavailableView.search(text: searchText)
+        } else if items.isEmpty {
+            emptyState(for: section)
+        } else {
+            itemList(items, section: section)
         }
     }
 
     private func items(for section: Section) -> [TrayItem] {
         switch section {
-        case .recent: snapshot.recent
+        case .recent: snapshot.search(searchText)
         case .pinned: snapshot.pinned
+        case .collections: []
         case .trash: snapshot.trash
         }
     }
@@ -128,6 +205,8 @@ struct RootView: View {
                 systemImage: "pin",
                 description: Text("Pin an object to keep it from expiring.")
             )
+        case .collections:
+            EmptyView()
         case .trash:
             ContentUnavailableView(
                 "Trash is empty",
@@ -142,6 +221,60 @@ struct RootView: View {
             capture(strings.first)
         }
         .accessibilityLabel("Save clipboard text")
+    }
+
+    @ViewBuilder
+    private var collectionsContent: some View {
+        if snapshot.collections.isEmpty {
+            ContentUnavailableView {
+                Label("No collections", systemImage: "folder")
+            } description: {
+                Text("Create a collection when you want a little more structure.")
+            } actions: {
+                Button("New Collection") { presentedSheet = .createCollection }
+                    .buttonStyle(.borderedProminent)
+            }
+        } else {
+            List {
+                ForEach(snapshot.collections) { collection in
+                    NavigationLink {
+                        let collectionItems = snapshot.recent.filter {
+                            $0.collectionID == collection.id
+                        }
+                        Group {
+                            if collectionItems.isEmpty {
+                                ContentUnavailableView(
+                                    "Collection is empty",
+                                    systemImage: "folder",
+                                    description: Text("Edit an object to add it here.")
+                                )
+                            } else {
+                                itemList(collectionItems, section: .collections)
+                            }
+                        }
+                        .navigationTitle(collection.name)
+                    } label: {
+                        HStack {
+                            Label(collection.name, systemImage: "folder")
+                            Spacer()
+                            Text(snapshot.recent.count { $0.collectionID == collection.id }, format: .number)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button { presentedSheet = .renameCollection(collection) } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) { pendingCollectionDeletion = collection } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                }
+            }
+            .listStyle(.plain)
+        }
     }
 
     private func itemList(_ items: [TrayItem], section: Section) -> some View {
@@ -164,9 +297,11 @@ struct RootView: View {
     private func itemRow(_ item: TrayItem, section: Section) -> some View {
         HStack(spacing: 12) {
             if section == .trash {
-                TrayTextRow(item: item)
+                TrayTextRow(item: item, collectionName: collectionName(for: item))
             } else {
-                Button { copy(item) } label: { TrayTextRow(item: item) }
+                Button { copy(item) } label: {
+                    TrayTextRow(item: item, collectionName: collectionName(for: item))
+                }
                     .buttonStyle(.plain)
                     .contentShape(Rectangle())
                     .accessibilityHint("Copies this \(item.kind == .url ? "link" : "text")")
@@ -180,8 +315,12 @@ struct RootView: View {
                 }
             }
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if section != .trash {
+                Button { presentedSheet = .editItem(item) } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .tint(.blue)
                 Button { setPinned(item, to: !item.isPinned) } label: {
                     Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
                 }
@@ -217,6 +356,18 @@ struct RootView: View {
             get: { pendingPermanentDeletion != nil },
             set: { if !$0 { pendingPermanentDeletion = nil } }
         )
+    }
+
+    private var isConfirmingCollectionDeletion: Binding<Bool> {
+        Binding(
+            get: { pendingCollectionDeletion != nil },
+            set: { if !$0 { pendingCollectionDeletion = nil } }
+        )
+    }
+
+    private func collectionName(for item: TrayItem) -> String? {
+        guard let collectionID = item.collectionID else { return nil }
+        return snapshot.collections.first { $0.id == collectionID }?.name
     }
 
     private func capture(_ text: String?) {
@@ -260,6 +411,13 @@ struct RootView: View {
         }
     }
 
+    private func deleteCollection(_ collection: TrayCollection) {
+        pendingCollectionDeletion = nil
+        perform("Collection deleted") {
+            try await tray.deleteCollection(collection.id)
+        }
+    }
+
     private func perform(
         _ successMessage: String,
         operation: @escaping @Sendable () async throws -> Void
@@ -300,6 +458,7 @@ private struct SystemTextClipboard: TextClipboard {
 
 private struct TrayTextRow: View {
     let item: TrayItem
+    let collectionName: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -308,11 +467,26 @@ private struct TrayTextRow: View {
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 6) {
+                if let title = item.title {
+                    Text(title).font(.headline)
+                }
                 if item.kind == .url {
-                    Text(URL(string: item.text)?.host() ?? "Link").font(.headline)
+                    if item.title == nil {
+                        Text(URL(string: item.text)?.host() ?? "Link").font(.headline)
+                    }
                     Text(item.text).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 } else {
                     Text(item.text).foregroundStyle(.primary).lineLimit(4)
+                }
+
+                if let note = item.note {
+                    Text(note).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                }
+
+                if let collectionName {
+                    Label(collectionName, systemImage: "folder")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 lifecycleLabel
@@ -341,6 +515,179 @@ private struct TrayTextRow: View {
             Text("Expires \(expiresAt, format: .relative(presentation: .named))")
         } else {
             Text(item.capturedAt, format: .relative(presentation: .named))
+        }
+    }
+}
+
+private struct ItemEditor: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let item: TrayItem
+    let collections: [TrayCollection]
+    let tray: Tray
+    let onSaved: () async -> Void
+
+    @State private var text: String
+    @State private var title: String
+    @State private var note: String
+    @State private var collectionID: UUID?
+    @State private var errorMessage: String?
+    @State private var isSaving = false
+
+    init(
+        item: TrayItem,
+        collections: [TrayCollection],
+        tray: Tray,
+        onSaved: @escaping () async -> Void
+    ) {
+        self.item = item
+        self.collections = collections
+        self.tray = tray
+        self.onSaved = onSaved
+        _text = State(initialValue: item.text)
+        _title = State(initialValue: item.title ?? "")
+        _note = State(initialValue: item.note ?? "")
+        _collectionID = State(initialValue: item.collectionID)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Content") {
+                    TextEditor(text: $text)
+                        .frame(minHeight: 120)
+                        .accessibilityLabel("Object text")
+                }
+                Section("Details") {
+                    TextField("Title", text: $title)
+                    TextField("Note", text: $note, axis: .vertical)
+                        .lineLimit(2...5)
+                    Picker("Collection", selection: $collectionID) {
+                        Text("None").tag(UUID?.none)
+                        ForEach(collections) { collection in
+                            Text(collection.name).tag(Optional(collection.id))
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Edit Object")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Saving…" : "Save") { Task { await save() } }
+                        .disabled(
+                            isSaving || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
+                }
+            }
+        }
+        .alert("Couldn't update that object", isPresented: isShowingError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "Please try again.")
+        }
+    }
+
+    private func blankAsNil(_ value: String) -> String? {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : value
+    }
+
+    private var isShowingError: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private func save() async {
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            _ = try await tray.edit(
+                item.id,
+                text: text,
+                title: blankAsNil(title),
+                note: blankAsNil(note),
+                collectionID: collectionID
+            )
+            await onSaved()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct CollectionEditor: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let title: String
+    let tray: Tray
+    let collectionID: UUID?
+    let onSaved: () async -> Void
+    @State private var name: String
+    @State private var errorMessage: String?
+    @State private var isSaving = false
+
+    init(
+        title: String,
+        initialName: String,
+        tray: Tray,
+        collectionID: UUID? = nil,
+        onSaved: @escaping () async -> Void
+    ) {
+        self.title = title
+        self.tray = tray
+        self.collectionID = collectionID
+        self.onSaved = onSaved
+        _name = State(initialValue: initialName)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Collection name", text: $name)
+                    .textInputAutocapitalization(.words)
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Saving…" : "Save") { Task { await save() } }
+                        .disabled(
+                            isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .alert("Couldn't save that collection", isPresented: isShowingError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "Please try again.")
+        }
+    }
+
+    private var isShowingError: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private func save() async {
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            if let collectionID {
+                _ = try await tray.renameCollection(collectionID, to: name)
+            } else {
+                _ = try await tray.createCollection(named: name)
+            }
+            await onSaved()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

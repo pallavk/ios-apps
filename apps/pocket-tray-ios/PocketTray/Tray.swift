@@ -1,12 +1,18 @@
 import Foundation
 
 enum TrayError: Error, Equatable, LocalizedError {
+    case collectionNotFound
+    case emptyCollectionName
     case emptyText
     case itemNotFound
     case unsupportedContent
 
     var errorDescription: String? {
         switch self {
+        case .collectionNotFound:
+            "That collection is no longer available."
+        case .emptyCollectionName:
+            "A collection needs a name."
         case .emptyText:
             "The clipboard does not contain text to save."
         case .itemNotFound:
@@ -48,6 +54,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
     private(set) var title: String?
     private(set) var note: String?
     private(set) var collectionID: UUID?
+    private(set) var deduplicationKeys: Set<String>
     private(set) var expiresAt: Date?
     private(set) var state: TrayItemState
     private(set) var trashedAt: Date?
@@ -62,6 +69,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         title: String? = nil,
         note: String? = nil,
         collectionID: UUID? = nil,
+        deduplicationKeys: Set<String>? = nil,
         expiresAt: Date? = nil,
         state: TrayItemState = .recent,
         trashedAt: Date? = nil
@@ -75,6 +83,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         self.title = title
         self.note = note
         self.collectionID = collectionID
+        self.deduplicationKeys = deduplicationKeys ?? [text]
         self.expiresAt = expiresAt
         self.state = state
         self.trashedAt = trashedAt
@@ -90,6 +99,8 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         case title
         case note
         case collectionID
+        case deduplicationKeys
+        case deduplicationKey
         case expiresAt
         case state
         case trashedAt
@@ -106,6 +117,13 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         title = try container.decodeIfPresent(String.self, forKey: .title)
         note = try container.decodeIfPresent(String.self, forKey: .note)
         collectionID = try container.decodeIfPresent(UUID.self, forKey: .collectionID)
+        if let storedKeys = try container.decodeIfPresent(Set<String>.self, forKey: .deduplicationKeys) {
+            deduplicationKeys = storedKeys.union([text])
+        } else if let legacyKey = try container.decodeIfPresent(String.self, forKey: .deduplicationKey) {
+            deduplicationKeys = [legacyKey, text]
+        } else {
+            deduplicationKeys = [text]
+        }
         state = try container.decodeIfPresent(TrayItemState.self, forKey: .state) ?? .recent
         trashedAt = try container.decodeIfPresent(Date.self, forKey: .trashedAt)
         let storedExpiry = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
@@ -118,14 +136,56 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(text, forKey: .text)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(capturedAt, forKey: .capturedAt)
+        try container.encode(isPinned, forKey: .isPinned)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(note, forKey: .note)
+        try container.encodeIfPresent(collectionID, forKey: .collectionID)
+        try container.encode(deduplicationKeys, forKey: .deduplicationKeys)
+        try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
+        try container.encode(state, forKey: .state)
+        try container.encodeIfPresent(trashedAt, forKey: .trashedAt)
+    }
+
     func recaptured(with candidate: TrayItem) -> TrayItem {
         var updated = self
-        updated.kind = candidate.kind
-        updated.text = candidate.text
+        if text == candidate.text {
+            updated.kind = candidate.kind
+        }
         updated.capturedAt = candidate.capturedAt
+        updated.deduplicationKeys.formUnion(candidate.deduplicationKeys)
         updated.expiresAt = isPinned ? nil : candidate.expiresAt
         updated.state = .recent
         updated.trashedAt = nil
+        return updated
+    }
+
+    func mergingDeduplicationKeys(_ keys: Set<String>) -> TrayItem {
+        var updated = self
+        updated.deduplicationKeys.formUnion(keys)
+        return updated
+    }
+
+    func applying(_ edits: TrayItemEdits) -> TrayItem {
+        var updated = self
+        updated.kind = edits.kind
+        updated.text = edits.text
+        updated.deduplicationKeys.insert(edits.text)
+        updated.title = edits.title
+        updated.note = edits.note
+        updated.collectionID = edits.collectionID
+        return updated
+    }
+
+    func assigning(to collectionID: UUID?) -> TrayItem {
+        var updated = self
+        updated.collectionID = collectionID
         return updated
     }
 
@@ -154,18 +214,91 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         return updated
     }
 
-    var contentIdentity: String {
-        text
+}
+
+struct TrayItemEdits: Equatable, Sendable {
+    let kind: TrayItemKind
+    let text: String
+    let title: String?
+    let note: String?
+    let collectionID: UUID?
+}
+
+struct TrayCollection: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    private(set) var name: String
+    let createdAt: Date
+
+    func renamed(to name: String) -> TrayCollection {
+        TrayCollection(id: id, name: name, createdAt: createdAt)
     }
 }
 
+struct TrayStore: Codable, Equatable, Sendable {
+    static let empty = TrayStore()
+
+    var items: [TrayItem]
+    var collections: [TrayCollection]
+
+    init(items: [TrayItem] = [], collections: [TrayCollection] = []) {
+        self.items = items
+        self.collections = collections
+    }
+}
+
+enum TrayMutation: Sendable {
+    case capture(TrayItem)
+    case setPinned(UUID, Bool, Date)
+    case moveToTrash(UUID, Date)
+    case restore(UUID, Date)
+    case deletePermanently(UUID)
+    case edit(UUID, TrayItemEdits, Date)
+    case createCollection(TrayCollection)
+    case assign(UUID, UUID?, Date)
+    case renameCollection(UUID, String)
+    case deleteCollection(UUID)
+}
+
+enum TrayMutationResult: Sendable {
+    case item(TrayItem?)
+    case collection(TrayCollection?)
+    case success(Bool)
+
+    var item: TrayItem? {
+        get throws {
+            guard case let .item(item) = self else {
+                throw TrayRepositoryContractError.unexpectedMutationResult
+            }
+            return item
+        }
+    }
+
+    var collection: TrayCollection? {
+        get throws {
+            guard case let .collection(collection) = self else {
+                throw TrayRepositoryContractError.unexpectedMutationResult
+            }
+            return collection
+        }
+    }
+
+    var succeeded: Bool {
+        get throws {
+            guard case let .success(succeeded) = self else {
+                throw TrayRepositoryContractError.unexpectedMutationResult
+            }
+            return succeeded
+        }
+    }
+}
+
+private enum TrayRepositoryContractError: Error {
+    case unexpectedMutationResult
+}
+
 protocol TrayRepository: Sendable {
-    func save(_ item: TrayItem) async throws -> TrayItem
-    func setPinned(_ id: UUID, to isPinned: Bool, at date: Date) async throws -> TrayItem?
-    func moveToTrash(_ id: UUID, at date: Date) async throws -> TrayItem?
-    func restore(_ id: UUID, at date: Date) async throws -> TrayItem?
-    func deletePermanently(_ id: UUID) async throws -> Bool
-    func items(at date: Date) async throws -> [TrayItem]
+    func apply(_ mutation: TrayMutation) async throws -> TrayMutationResult
+    func store(at date: Date) async throws -> TrayStore
 }
 
 protocol TextClipboard: Sendable {
@@ -216,7 +349,10 @@ struct Tray: Sendable {
             capturedAt: capturedAt,
             expiresAt: capturedAt.addingTimeInterval(TrayRetention.recent)
         )
-        return try await repository.save(item)
+        guard let saved = try await repository.apply(.capture(item)).item else {
+            throw TrayError.itemNotFound
+        }
+        return saved
     }
 
     private static func webURL(from text: String) -> URL? {
@@ -244,42 +380,115 @@ struct Tray: Sendable {
     }
 
     func snapshot() async throws -> TraySnapshot {
-        let items = try await repository.items(at: now())
-        let recent = items.filter { $0.state == .recent }.newestFirst()
+        let store = try await repository.store(at: now())
+        let recent = store.items.filter { $0.state == .recent }.newestFirst()
         return TraySnapshot(
             recent: recent,
             pinned: recent.filter(\.isPinned),
-            trash: items
+            trash: store.items
                 .filter { $0.state == .trash }
-                .sorted { ($0.trashedAt ?? .distantPast) > ($1.trashedAt ?? .distantPast) }
+                .sorted { ($0.trashedAt ?? .distantPast) > ($1.trashedAt ?? .distantPast) },
+            collections: store.collections.sorted {
+                $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
         )
     }
 
+    func createCollection(named name: String) async throws -> TrayCollection {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedName.isEmpty else {
+            throw TrayError.emptyCollectionName
+        }
+        let collection = TrayCollection(id: UUID(), name: normalizedName, createdAt: now())
+        guard let created = try await repository.apply(.createCollection(collection)).collection else {
+            throw TrayError.collectionNotFound
+        }
+        return created
+    }
+
+    func assign(_ itemID: UUID, to collectionID: UUID?) async throws -> TrayItem {
+        guard let item = try await repository.apply(.assign(itemID, collectionID, now())).item else {
+            throw TrayError.itemNotFound
+        }
+        return item
+    }
+
+    func renameCollection(_ id: UUID, to name: String) async throws -> TrayCollection {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedName.isEmpty else {
+            throw TrayError.emptyCollectionName
+        }
+        guard let collection = try await repository.apply(.renameCollection(id, normalizedName)).collection else {
+            throw TrayError.collectionNotFound
+        }
+        return collection
+    }
+
+    func deleteCollection(_ id: UUID) async throws {
+        guard try await repository.apply(.deleteCollection(id)).succeeded else {
+            throw TrayError.collectionNotFound
+        }
+    }
+
+    func search(_ query: String) async throws -> [TrayItem] {
+        try await snapshot().search(query)
+    }
+
     func setPinned(_ id: UUID, to isPinned: Bool) async throws -> TrayItem {
-        guard let item = try await repository.setPinned(id, to: isPinned, at: now()) else {
+        guard let item = try await repository.apply(.setPinned(id, isPinned, now())).item else {
             throw TrayError.itemNotFound
         }
         return item
     }
 
     func moveToTrash(_ id: UUID) async throws -> TrayItem {
-        guard let item = try await repository.moveToTrash(id, at: now()) else {
+        guard let item = try await repository.apply(.moveToTrash(id, now())).item else {
             throw TrayError.itemNotFound
         }
         return item
     }
 
     func restore(_ id: UUID) async throws -> TrayItem {
-        guard let item = try await repository.restore(id, at: now()) else {
+        guard let item = try await repository.apply(.restore(id, now())).item else {
             throw TrayError.itemNotFound
         }
         return item
     }
 
     func deletePermanently(_ id: UUID) async throws {
-        guard try await repository.deletePermanently(id) else {
+        guard try await repository.apply(.deletePermanently(id)).succeeded else {
             throw TrayError.itemNotFound
         }
+    }
+
+    func edit(
+        _ id: UUID,
+        text: String,
+        title: String?,
+        note: String?,
+        collectionID: UUID? = nil
+    ) async throws -> TrayItem {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw TrayError.emptyText
+        }
+        let edits = TrayItemEdits(
+            kind: Self.webURL(from: text) == nil ? .text : .url,
+            text: text,
+            title: Self.nonBlank(title),
+            note: Self.nonBlank(note),
+            collectionID: collectionID
+        )
+        guard let item = try await repository.apply(.edit(id, edits, now())).item else {
+            throw TrayError.itemNotFound
+        }
+        return item
+    }
+
+    private static func nonBlank(_ value: String?) -> String? {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return value
     }
 
     func reuse(_ item: TrayItem, using clipboard: any TextClipboard) async throws {
@@ -288,11 +497,102 @@ struct Tray: Sendable {
 }
 
 struct TraySnapshot: Equatable, Sendable {
-    static let empty = TraySnapshot(recent: [], pinned: [], trash: [])
+    static let empty = TraySnapshot(recent: [], pinned: [], trash: [], collections: [])
 
     let recent: [TrayItem]
     let pinned: [TrayItem]
     let trash: [TrayItem]
+    let collections: [TrayCollection]
+
+    func search(_ query: String) -> [TrayItem] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuery.isEmpty else { return recent }
+        let collectionNames = Dictionary(
+            uniqueKeysWithValues: collections.map { ($0.id, $0.name) }
+        )
+        return recent.filter { item in
+            let values = [
+                item.text,
+                item.title,
+                item.note,
+                item.collectionID.flatMap { collectionNames[$0] }
+            ].compactMap { $0 }
+            return values.contains { value in
+                value.range(
+                    of: normalizedQuery,
+                    options: [.caseInsensitive, .diacriticInsensitive]
+                ) != nil
+            }
+        }
+    }
+}
+
+extension TrayStore {
+    mutating func apply(_ mutation: TrayMutation) -> TrayMutationResult {
+        switch mutation {
+        case let .capture(item):
+            .item(items.saveCapture(item))
+        case let .setPinned(id, isPinned, date):
+            .item(items.setPinned(id, to: isPinned, at: date))
+        case let .moveToTrash(id, date):
+            .item(items.moveToTrash(id, at: date))
+        case let .restore(id, date):
+            .item(items.restore(id, at: date))
+        case let .deletePermanently(id):
+            .success(items.deletePermanently(id))
+        case let .edit(id, edits, date):
+            .item(edit(id, edits: edits, at: date))
+        case let .createCollection(collection):
+            createCollection(collection)
+        case let .assign(itemID, collectionID, date):
+            .item(assign(itemID, to: collectionID, at: date))
+        case let .renameCollection(id, name):
+            .collection(renameCollection(id, to: name))
+        case let .deleteCollection(id):
+            .success(deleteCollection(id))
+        }
+    }
+
+    private mutating func createCollection(_ collection: TrayCollection) -> TrayMutationResult {
+        collections.append(collection)
+        return .collection(collection)
+    }
+
+    mutating func edit(_ id: UUID, edits: TrayItemEdits, at date: Date) -> TrayItem? {
+        guard edits.collectionID == nil || collections.contains(where: { $0.id == edits.collectionID }) else {
+            return nil
+        }
+        return items.edit(id, edits: edits, at: date)
+    }
+
+    mutating func assign(_ itemID: UUID, to collectionID: UUID?, at date: Date) -> TrayItem? {
+        items.maintainLifecycle(at: date)
+        guard
+            collectionID == nil || collections.contains(where: { $0.id == collectionID }),
+            let index = items.firstIndex(where: { $0.id == itemID && $0.state == .recent })
+        else {
+            return nil
+        }
+        let updated = items[index].assigning(to: collectionID)
+        items[index] = updated
+        return updated
+    }
+
+    mutating func renameCollection(_ id: UUID, to name: String) -> TrayCollection? {
+        guard let index = collections.firstIndex(where: { $0.id == id }) else { return nil }
+        let renamed = collections[index].renamed(to: name)
+        collections[index] = renamed
+        return renamed
+    }
+
+    mutating func deleteCollection(_ id: UUID) -> Bool {
+        guard let index = collections.firstIndex(where: { $0.id == id }) else { return false }
+        collections.remove(at: index)
+        for itemIndex in items.indices where items[itemIndex].collectionID == id {
+            items[itemIndex] = items[itemIndex].assigning(to: nil)
+        }
+        return true
+    }
 }
 
 extension Sequence where Element == TrayItem {
@@ -318,16 +618,19 @@ extension Array where Element == TrayItem {
     mutating func saveCapture(_ candidate: TrayItem) -> TrayItem {
         maintainLifecycle(at: candidate.capturedAt)
         let matches = filter {
-            $0.contentIdentity == candidate.contentIdentity
+            !$0.deduplicationKeys.isDisjoint(with: candidate.deduplicationKeys)
         }
         guard let existing = matches.max(by: { $0.capturedAt < $1.capturedAt }) else {
             append(candidate)
             return candidate
         }
 
-        let updated = existing.recaptured(with: candidate)
+        var updated = existing.recaptured(with: candidate)
+        for match in matches {
+            updated = updated.mergingDeduplicationKeys(match.deduplicationKeys)
+        }
         removeAll {
-            $0.contentIdentity == candidate.contentIdentity
+            !$0.deduplicationKeys.isDisjoint(with: candidate.deduplicationKeys)
         }
         append(updated)
         return updated
@@ -370,37 +673,31 @@ extension Array where Element == TrayItem {
         remove(at: index)
         return true
     }
+
+    mutating func edit(_ id: UUID, edits: TrayItemEdits, at date: Date) -> TrayItem? {
+        maintainLifecycle(at: date)
+        guard let index = firstIndex(where: { $0.id == id && $0.state == .recent }) else {
+            return nil
+        }
+        let updated = self[index].applying(edits)
+        self[index] = updated
+        return updated
+    }
 }
 
 actor InMemoryTrayRepository: TrayRepository {
-    private var items: [TrayItem]
+    private var store: TrayStore
 
-    init(items: [TrayItem] = []) {
-        self.items = items
+    init(items: [TrayItem] = [], collections: [TrayCollection] = []) {
+        self.store = TrayStore(items: items, collections: collections)
     }
 
-    func save(_ item: TrayItem) -> TrayItem {
-        items.saveCapture(item)
+    func apply(_ mutation: TrayMutation) -> TrayMutationResult {
+        store.apply(mutation)
     }
 
-    func setPinned(_ id: UUID, to isPinned: Bool, at date: Date) -> TrayItem? {
-        items.setPinned(id, to: isPinned, at: date)
-    }
-
-    func moveToTrash(_ id: UUID, at date: Date) -> TrayItem? {
-        items.moveToTrash(id, at: date)
-    }
-
-    func restore(_ id: UUID, at date: Date) -> TrayItem? {
-        items.restore(id, at: date)
-    }
-
-    func deletePermanently(_ id: UUID) -> Bool {
-        items.deletePermanently(id)
-    }
-
-    func items(at date: Date) -> [TrayItem] {
-        items.maintainLifecycle(at: date)
-        return items
+    func store(at date: Date) -> TrayStore {
+        store.items.maintainLifecycle(at: date)
+        return store
     }
 }

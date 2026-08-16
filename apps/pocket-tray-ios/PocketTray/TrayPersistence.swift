@@ -43,52 +43,32 @@ actor FileTrayRepository: TrayRepository {
             .appending(path: "tray.json")
     }
 
-    func save(_ item: TrayItem) throws -> TrayItem {
-        try updateItems { items in
-            items.saveCapture(item)
+    func apply(_ mutation: TrayMutation) throws -> TrayMutationResult {
+        try updateStore { store in
+            store.apply(mutation)
         }
     }
 
-    func setPinned(_ id: UUID, to isPinned: Bool, at date: Date) throws -> TrayItem? {
-        try updateItems { items in
-            items.setPinned(id, to: isPinned, at: date)
+    func store(at date: Date) throws -> TrayStore {
+        try updateStore { store in
+            store.items.maintainLifecycle(at: date)
+            return store
         }
     }
 
-    func moveToTrash(_ id: UUID, at date: Date) throws -> TrayItem? {
-        try updateItems { items in
-            items.moveToTrash(id, at: date)
-        }
-    }
-
-    func restore(_ id: UUID, at date: Date) throws -> TrayItem? {
-        try updateItems { items in
-            items.restore(id, at: date)
-        }
-    }
-
-    func deletePermanently(_ id: UUID) throws -> Bool {
-        try updateItems { items in
-            items.deletePermanently(id)
-        }
-    }
-
-    func items(at date: Date) throws -> [TrayItem] {
-        try updateItems { items in
-            items.maintainLifecycle(at: date)
-            return items
-        }
-    }
-
-    private func loadItems(at url: URL) throws -> [TrayItem] {
+    private func loadStore(at url: URL) throws -> TrayStore {
         guard fileManager.fileExists(atPath: url.path) else {
-            return []
+            return .empty
         }
-        return try JSONDecoder().decode([TrayItem].self, from: Data(contentsOf: url))
+        let data = try Data(contentsOf: url)
+        if let store = try? JSONDecoder().decode(TrayStore.self, from: data) {
+            return store
+        }
+        return TrayStore(items: try JSONDecoder().decode([TrayItem].self, from: data))
     }
 
-    private func updateItems<Value: Sendable>(
-        _ operation: @Sendable (inout [TrayItem]) throws -> Value
+    private func updateStore<Value: Sendable>(
+        _ operation: @Sendable (inout TrayStore) throws -> Value
     ) throws -> Value {
         try migrateLegacyFileIfNeeded()
         try fileManager.createDirectory(
@@ -96,9 +76,9 @@ actor FileTrayRepository: TrayRepository {
             withIntermediateDirectories: true
         )
         return try coordinateWriting { coordinatedURL in
-            var items = try loadItems(at: coordinatedURL)
-            let value = try operation(&items)
-            try JSONEncoder().encode(items).write(to: coordinatedURL, options: .atomic)
+            var store = try loadStore(at: coordinatedURL)
+            let value = try operation(&store)
+            try JSONEncoder().encode(store).write(to: coordinatedURL, options: .atomic)
             return value
         }
     }
@@ -156,27 +136,11 @@ enum TrayPersistenceError: Error, LocalizedError {
 }
 
 actor UnavailableTrayRepository: TrayRepository {
-    func save(_ item: TrayItem) throws -> TrayItem {
+    func apply(_ mutation: TrayMutation) throws -> TrayMutationResult {
         throw TrayPersistenceError.appGroupUnavailable
     }
 
-    func items(at date: Date) throws -> [TrayItem] {
-        throw TrayPersistenceError.appGroupUnavailable
-    }
-
-    func setPinned(_ id: UUID, to isPinned: Bool, at date: Date) throws -> TrayItem? {
-        throw TrayPersistenceError.appGroupUnavailable
-    }
-
-    func moveToTrash(_ id: UUID, at date: Date) throws -> TrayItem? {
-        throw TrayPersistenceError.appGroupUnavailable
-    }
-
-    func restore(_ id: UUID, at date: Date) throws -> TrayItem? {
-        throw TrayPersistenceError.appGroupUnavailable
-    }
-
-    func deletePermanently(_ id: UUID) throws -> Bool {
+    func store(at date: Date) throws -> TrayStore {
         throw TrayPersistenceError.appGroupUnavailable
     }
 }
