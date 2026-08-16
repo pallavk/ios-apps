@@ -104,7 +104,7 @@ struct ClipboardCaptureService: Sendable {
 struct SaveClipboardIntent: AppIntent {
     static let title: LocalizedStringResource = "Save Clipboard"
     static let description = IntentDescription(
-        "Deliberately save the current text or link from the clipboard to Pocket Tray."
+        "Deliberately save the current text, link, image, or PDF from the clipboard to Pocket Tray."
     )
     static let openAppWhenRun = false
 
@@ -125,7 +125,7 @@ struct SaveClipboardIntent: AppIntent {
         case .requiresSensitiveReview:
             return .result(dialog: "This clipboard may contain a secret. Open Pocket Tray and use Paste to review it before saving.")
         case .unsupported:
-            return .result(dialog: "The clipboard does not contain supported text or a link.")
+            return .result(dialog: "The clipboard does not contain supported text, a link, an image, or a PDF.")
         case let .failed(message):
             return .result(dialog: IntentDialog(stringLiteral: message))
         }
