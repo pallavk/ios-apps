@@ -505,12 +505,21 @@ struct RootView: View {
 
     private func perform(_ action: ContentAction) {
         if let target = action.target, let url = URL(string: target) {
-            openURL(url)
-            feedbackMessage = actionOpenedMessage(action)
-        } else {
-            perform("Copied \(actionCopyName(action))") {
-                try await clipboard.copy(action.value)
+            openURL(url) { accepted in
+                if accepted {
+                    feedbackMessage = actionOpenedMessage(action)
+                } else {
+                    copyActionValue(action)
+                }
             }
+        } else {
+            copyActionValue(action)
+        }
+    }
+
+    private func copyActionValue(_ action: ContentAction) {
+        perform("Copied \(actionCopyName(action))") {
+            try await clipboard.copy(action.value)
         }
     }
 

@@ -2,6 +2,21 @@ import XCTest
 @testable import PocketTray
 
 final class ContentAnalysisTests: XCTestCase {
+    private actor RetryAnalyzer: ContentAnalyzing {
+        let result: ContentAnalysis
+        private(set) var callCount = 0
+
+        init(result: ContentAnalysis) {
+            self.result = result
+        }
+
+        func analyze(_ input: ContentAnalysisInput) async throws -> ContentAnalysis {
+            callCount += 1
+            if callCount == 1 { throw TestFailure.analysis }
+            return result
+        }
+    }
+
     private actor ControlledAnalyzer: ContentAnalyzing {
         enum Mode {
             case result(ContentAnalysis)
@@ -77,6 +92,22 @@ final class ContentAnalysisTests: XCTestCase {
         XCTAssertEqual(recent.first?.id, captured.id)
         XCTAssertEqual(recent.first?.text, "Keep the original")
         XCTAssertNil(recent.first?.analysis)
+    }
+
+    func testMissingAnalysisRetriesOnNextSnapshot() async throws {
+        let analyzer = RetryAnalyzer(result: fixture)
+        let tray = Tray(repository: InMemoryTrayRepository(), analyzer: analyzer)
+
+        _ = try await tray.capture(.text("Retry locally"))
+        try await waitUntil { await analyzer.callCount == 1 }
+        _ = try await tray.snapshot()
+        try await waitUntil {
+            let recent = try await tray.recent()
+            return recent.first?.analysis == self.fixture
+        }
+
+        let callCount = await analyzer.callCount
+        XCTAssertGreaterThanOrEqual(callCount, 2)
     }
 
     func testAnalysisPersistsAcrossRepositoryRelaunch() async throws {

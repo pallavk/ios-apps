@@ -192,18 +192,21 @@ struct AppleContentAnalyzer: ContentAnalyzing {
     }
 
     private func trackingNumbers(in text: String) -> [AppleDetectedValue] {
-        let patterns = [
-            #"\b1Z[0-9A-Z]{16}\b"#,
-            #"\b(?:[0-9][ -]?){12,22}\b"#
+        let patterns: [(pattern: String, captureGroup: Int)] = [
+            (#"\b1Z[0-9A-Z]{16}\b"#, 0),
+            (#"\b(?:92|93|94|95)[0-9]{18,20}\b"#, 0),
+            (#"\b(?:fedex|tracking(?: number| no\.?)?)\s*[:#-]?\s*([0-9]{12,22})\b"#, 1)
         ]
-        return patterns.flatMap { pattern -> [AppleDetectedValue] in
+        return patterns.flatMap { rule -> [AppleDetectedValue] in
             guard let expression = try? NSRegularExpression(
-                pattern: pattern,
+                pattern: rule.pattern,
                 options: [.caseInsensitive]
             ) else { return [] }
             let fullRange = NSRange(text.startIndex..<text.endIndex, in: text)
             return expression.matches(in: text, range: fullRange).compactMap { match in
-                guard let range = Range(match.range, in: text) else { return nil }
+                guard let range = Range(match.range(at: rule.captureGroup), in: text) else {
+                    return nil
+                }
                 let value = text[range].filter { $0.isLetter || $0.isNumber }
                 return AppleDetectedValue(kind: .trackingNumber, value: String(value))
             }
