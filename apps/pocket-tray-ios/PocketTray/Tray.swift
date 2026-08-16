@@ -487,7 +487,7 @@ struct Tray: Sendable {
             !acknowledgingSensitiveContent
         {
             throw TrayError.sensitiveContentRequiresAcknowledgment(
-                assessment.reasons.sorted { $0.rawValue < $1.rawValue }
+                SensitiveContentReason.ordered(assessment.reasons)
             )
         }
         guard let saved = try await repository.apply(
@@ -650,7 +650,7 @@ struct Tray: Sendable {
             !acknowledgingSensitiveContent
         {
             throw TrayError.sensitiveContentRequiresAcknowledgment(
-                sensitivity.reasons.sorted { $0.rawValue < $1.rawValue }
+                SensitiveContentReason.ordered(sensitivity.reasons)
             )
         }
         guard let item = try await repository.apply(.edit(id, edits, now())).item else {

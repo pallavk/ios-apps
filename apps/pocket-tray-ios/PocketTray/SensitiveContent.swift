@@ -12,6 +12,10 @@ enum SensitiveContentReason: String, Codable, CaseIterable, Equatable, Sendable 
         case .privateKey: "private key"
         }
     }
+
+    static func ordered(_ reasons: Set<Self>) -> [Self] {
+        reasons.sorted { $0.rawValue < $1.rawValue }
+    }
 }
 
 struct SensitivityAssessment: Codable, Equatable, Sendable {
@@ -28,6 +32,26 @@ struct SensitivityAssessment: Codable, Equatable, Sendable {
 
     func settingOverridden(_ isOverridden: Bool) -> SensitivityAssessment {
         SensitivityAssessment(reasons: reasons, isOverridden: isOverridden)
+    }
+}
+
+struct SensitivePreviewSession: Equatable, Sendable {
+    private var revealedItemIDs: Set<UUID> = []
+
+    func allowsContentAccess(to item: TrayItem) -> Bool {
+        !item.protectsSensitivePreview || revealedItemIDs.contains(item.id)
+    }
+
+    mutating func reveal(_ itemID: UUID) {
+        revealedItemIDs.insert(itemID)
+    }
+
+    mutating func hide(_ itemID: UUID) {
+        revealedItemIDs.remove(itemID)
+    }
+
+    mutating func endForegroundSession() {
+        revealedItemIDs.removeAll()
     }
 }
 

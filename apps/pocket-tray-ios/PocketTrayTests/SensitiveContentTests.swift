@@ -171,6 +171,43 @@ final class SensitiveContentTests: XCTestCase {
         XCTAssertTrue(edited.protectsSensitivePreview)
     }
 
+    func testSensitivePreviewSessionRequiresRevealAndResetsWhenAppLeavesForeground() {
+        let protected = TrayItem(
+            id: UUID(),
+            text: "Verification code: 739201",
+            capturedAt: Date(),
+            sensitivity: SensitivityAssessment(reasons: [.oneTimeCode])
+        )
+        var session = SensitivePreviewSession()
+
+        XCTAssertFalse(session.allowsContentAccess(to: protected))
+        session.reveal(protected.id)
+        XCTAssertTrue(session.allowsContentAccess(to: protected))
+        session.hide(protected.id)
+        XCTAssertFalse(session.allowsContentAccess(to: protected))
+
+        session.reveal(protected.id)
+        session.endForegroundSession()
+        XCTAssertFalse(session.allowsContentAccess(to: protected))
+    }
+
+    func testSensitivePreviewSessionAllowsOrdinaryAndOverriddenContent() {
+        let ordinary = TrayItem(id: UUID(), text: "Shopping list", capturedAt: Date())
+        let overridden = TrayItem(
+            id: UUID(),
+            text: "Verification code: 739201",
+            capturedAt: Date(),
+            sensitivity: SensitivityAssessment(
+                reasons: [.oneTimeCode],
+                isOverridden: true
+            )
+        )
+        let session = SensitivePreviewSession()
+
+        XCTAssertTrue(session.allowsContentAccess(to: ordinary))
+        XCTAssertTrue(session.allowsContentAccess(to: overridden))
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(2),
         _ condition: @escaping () async throws -> Bool

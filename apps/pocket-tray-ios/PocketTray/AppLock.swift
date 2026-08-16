@@ -81,6 +81,7 @@ final class AppLockController: ObservableObject {
             isLocked = false
             errorMessage = nil
         } else {
+            guard !isLocked else { return }
             settings.isAppLockEnabled = false
             isEnabled = false
             isLocked = false
@@ -164,5 +165,52 @@ private struct AppLockedView: View {
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(uiColor: .systemBackground))
+    }
+}
+
+struct AppLockSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var controller: AppLockController
+    @State private var isChangingSetting = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Privacy") {
+                    Toggle(
+                        "Require Face ID or Passcode",
+                        isOn: Binding(
+                            get: { controller.isEnabled },
+                            set: { isEnabled in updateAppLock(isEnabled) }
+                        )
+                    )
+                    .disabled(isChangingSetting)
+                    Text("When enabled, Pocket Tray locks after you leave the app. Authentication uses Apple's system screen and supports the device passcode fallback.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if let errorMessage = controller.errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("app-lock-setting-error")
+                    }
+                }
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func updateAppLock(_ isEnabled: Bool) {
+        isChangingSetting = true
+        Task {
+            await controller.setEnabled(isEnabled)
+            isChangingSetting = false
+        }
     }
 }

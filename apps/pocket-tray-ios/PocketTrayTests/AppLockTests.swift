@@ -94,4 +94,18 @@ final class AppLockTests: XCTestCase {
         XCTAssertFalse(controller.isLocked)
         XCTAssertEqual(authenticator.requestCount, 1)
     }
+
+    func testLockedSessionCannotDisableAppLock() async {
+        let settings = Settings(isEnabled: true)
+        let controller = AppLockController(
+            settings: settings,
+            authenticator: Authenticator(results: [])
+        )
+
+        await controller.setEnabled(false)
+
+        XCTAssertTrue(settings.isAppLockEnabled)
+        XCTAssertTrue(controller.isEnabled)
+        XCTAssertTrue(controller.isLocked)
+    }
 }

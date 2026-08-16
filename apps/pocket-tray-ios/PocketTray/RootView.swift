@@ -63,7 +63,7 @@ struct RootView: View {
     @State private var pendingCollectionDeletion: TrayCollection?
     @State private var pendingPermanentDeletion: TrayItem?
     @State private var pendingSensitiveCapture: PreparedTrayCapture?
-    @State private var revealedSensitiveItemIDs: Set<UUID> = []
+    @State private var sensitivePreviewSession = SensitivePreviewSession()
 
     init(
         tray: Tray,
@@ -88,7 +88,7 @@ struct RootView: View {
             if newPhase == .active {
                 Task { await reload() }
             } else {
-                revealedSensitiveItemIDs.removeAll()
+                sensitivePreviewSession.endForegroundSession()
             }
         }
         .sheet(item: $presentedSheet) { destination in
@@ -337,14 +337,13 @@ struct RootView: View {
 
     @ViewBuilder
     private func itemRow(_ item: TrayItem, section: Section) -> some View {
-        let isSensitiveHidden = item.protectsSensitivePreview
-            && !revealedSensitiveItemIDs.contains(item.id)
+        let isSensitiveHidden = !sensitivePreviewSession.allowsContentAccess(to: item)
         HStack(spacing: 12) {
             if isSensitiveHidden {
                 SensitiveTrayRow(item: item)
                 Menu {
                     Button {
-                        revealedSensitiveItemIDs.insert(item.id)
+                        sensitivePreviewSession.reveal(item.id)
                     } label: {
                         Label("Reveal", systemImage: "eye")
                     }
@@ -418,7 +417,7 @@ struct RootView: View {
 
             if item.protectsSensitivePreview, !isSensitiveHidden {
                 Button {
-                    revealedSensitiveItemIDs.remove(item.id)
+                    sensitivePreviewSession.hide(item.id)
                 } label: {
                     Image(systemName: "eye.slash")
                         .imageScale(.large)
@@ -450,10 +449,12 @@ struct RootView: View {
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if section != .trash {
-                Button { presentedSheet = .editItem(item) } label: {
-                    Label("Edit", systemImage: "pencil")
+                if !isSensitiveHidden {
+                    Button { presentedSheet = .editItem(item) } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    .tint(.blue)
                 }
-                .tint(.blue)
                 Button { setPinned(item, to: !item.isPinned) } label: {
                     Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
                 }
@@ -502,7 +503,7 @@ struct RootView: View {
         guard let reasons = pendingSensitiveCapture?.item.sensitivity?.reasons else {
             return "Pocket Tray found a possible secret."
         }
-        let labels = reasons.sorted { $0.rawValue < $1.rawValue }.map(\.warningLabel)
+        let labels = SensitiveContentReason.ordered(reasons).map(\.warningLabel)
         return "Pocket Tray found a possible \(labels.joined(separator: " or ")). Save it only if you intend to keep it here."
     }
 
@@ -586,7 +587,7 @@ struct RootView: View {
     }
 
     private func overrideSensitivity(_ item: TrayItem) {
-        revealedSensitiveItemIDs.remove(item.id)
+        sensitivePreviewSession.hide(item.id)
         perform("Marked as not sensitive") {
             _ = try await tray.setSensitivityOverridden(item.id, to: true)
         }
@@ -676,53 +677,6 @@ struct RootView: View {
     }
 }
 
-private struct AppLockSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject var controller: AppLockController
-    @State private var isChangingSetting = false
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Privacy") {
-                    Toggle(
-                        "Require Face ID or Passcode",
-                        isOn: Binding(
-                            get: { controller.isEnabled },
-                            set: { isEnabled in updateAppLock(isEnabled) }
-                        )
-                    )
-                    .disabled(isChangingSetting)
-                    Text("When enabled, Pocket Tray locks after you leave the app. Authentication uses Apple's system screen and supports the device passcode fallback.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if let errorMessage = controller.errorMessage {
-                        Text(errorMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                            .accessibilityIdentifier("app-lock-setting-error")
-                    }
-                }
-            }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-    }
-
-    private func updateAppLock(_ isEnabled: Bool) {
-        isChangingSetting = true
-        Task {
-            await controller.setEnabled(isEnabled)
-            isChangingSetting = false
-        }
-    }
-}
-
 private struct SystemTextClipboard: TextClipboard {
     func copy(_ text: String) async {
         await MainActor.run { UIPasteboard.general.string = text }
@@ -756,9 +710,9 @@ private struct SensitiveTrayRow: View {
     }
 
     private var reasonDescription: String {
-        let labels = item.sensitivity?.reasons
-            .sorted { $0.rawValue < $1.rawValue }
-            .map(\.warningLabel) ?? []
+        let labels = item.sensitivity.map {
+            SensitiveContentReason.ordered($0.reasons).map(\.warningLabel)
+        } ?? []
         guard !labels.isEmpty else { return "Pocket Tray found a possible secret." }
         return "Possible \(labels.joined(separator: " or "))."
     }
