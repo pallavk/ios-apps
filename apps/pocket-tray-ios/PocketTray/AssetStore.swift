@@ -70,7 +70,7 @@ struct AssetStore: Sendable {
             throw TrayAssetError.missing
         }
         let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
-        try ImageAssetFactory.validate(data, as: asset)
+        try TrayAssetValidator.validate(data, as: asset)
         let exportURL = try exportURL(for: asset, storedAt: fileURL, data: data)
         return TrayAssetResource(
             asset: asset,
@@ -154,7 +154,7 @@ struct AssetStore: Sendable {
         do {
             try data.write(to: temporaryURL, options: .withoutOverwriting)
             let temporaryData = try Data(contentsOf: temporaryURL, options: .mappedIfSafe)
-            try ImageAssetFactory.validate(temporaryData, as: asset)
+            try TrayAssetValidator.validate(temporaryData, as: asset)
             try FileManager.default.moveItem(at: temporaryURL, to: exportURL)
         } catch {
             if validExportExists(at: exportURL, for: asset) {
@@ -172,6 +172,6 @@ struct AssetStore: Sendable {
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
             return false
         }
-        return (try? ImageAssetFactory.validate(data, as: asset)) != nil
+        return (try? TrayAssetValidator.validate(data, as: asset)) != nil
     }
 }

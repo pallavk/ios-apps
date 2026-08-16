@@ -32,6 +32,7 @@ struct TrayAssetResource: Equatable, Sendable {
 enum TrayAssetError: Error, Equatable, LocalizedError {
     case corrupt
     case invalidImage
+    case invalidPDF
     case missing
     case tooLarge(maximumBytes: Int)
     case unsupportedType
@@ -42,12 +43,24 @@ enum TrayAssetError: Error, Equatable, LocalizedError {
             "This image is damaged and can't be opened."
         case .invalidImage:
             "Pocket Tray couldn't read that image."
+        case .invalidPDF:
+            "Pocket Tray couldn't read that PDF."
         case .missing:
-            "The original image is missing."
+            "The original file is missing."
         case let .tooLarge(maximumBytes):
-            "That image is larger than \(maximumBytes / 1_000_000) MB."
+            "That file is larger than \(maximumBytes / 1_000_000) MB."
         case .unsupportedType:
-            "Pocket Tray doesn't support that image format."
+            "Pocket Tray doesn't support that file format."
+        }
+    }
+}
+
+enum TrayAssetValidator {
+    static func validate(_ data: Data, as asset: TrayAsset) throws {
+        if UTType(asset.typeIdentifier)?.conforms(to: .pdf) == true {
+            try PDFAssetFactory.validate(data, as: asset)
+        } else {
+            try ImageAssetFactory.validate(data, as: asset)
         }
     }
 }

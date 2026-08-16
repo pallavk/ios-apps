@@ -25,6 +25,7 @@ enum TrayError: Error, Equatable, LocalizedError {
 
 enum CaptureContent: Equatable, Sendable {
     case image(ImagePayload)
+    case pdf(PDFPayload)
     case text(String)
     case url(URL)
     case unsupported
@@ -32,6 +33,7 @@ enum CaptureContent: Equatable, Sendable {
 
 enum TrayItemKind: String, Codable, Equatable, Sendable {
     case image
+    case pdf
     case text
     case url
 }
@@ -341,6 +343,16 @@ struct Tray: Sendable {
                 text = suggestedName
             } else {
                 text = "Image"
+            }
+            assetWrite = write
+        case let .pdf(payload):
+            let write = try PDFAssetFactory.makeWrite(from: payload)
+            kind = .pdf
+            let suggestedName = payload.filename?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let suggestedName, !suggestedName.isEmpty {
+                text = suggestedName
+            } else {
+                text = "PDF Document"
             }
             assetWrite = write
         case let .text(value):
