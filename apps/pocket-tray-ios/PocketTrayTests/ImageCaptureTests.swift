@@ -359,6 +359,35 @@ final class ImageCaptureTests: XCTestCase {
         XCTAssertEqual(resource.data, jpeg)
     }
 
+    func testThumbnailLoaderBoundsDecodedPixelDimensions() async throws {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 200))
+        let image = renderer.image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 400, height: 200))
+        }
+        let png = try XCTUnwrap(image.pngData())
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let item = try await tray.capture(
+            .image(
+                ImagePayload(
+                    data: png,
+                    typeIdentifier: "public.png",
+                    filename: "large.png"
+                )
+            )
+        )
+
+        let loaded = try await TrayImageLoader.thumbnail(
+            for: item,
+            tray: tray,
+            maxPixelSize: 64
+        )
+        let cgImage = try XCTUnwrap(loaded.image.cgImage)
+
+        XCTAssertLessThanOrEqual(max(cgImage.width, cgImage.height), 64)
+        XCTAssertEqual(try Data(contentsOf: loaded.originalURL), png)
+    }
+
     private func temporaryRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

@@ -5,12 +5,14 @@ struct RootView: View {
     private enum SheetDestination: Identifiable {
         case createCollection
         case editItem(TrayItem)
+        case previewImage(TrayItem)
         case renameCollection(TrayCollection)
 
         var id: String {
             switch self {
             case .createCollection: "create-collection"
             case let .editItem(item): "edit-item-\(item.id)"
+            case let .previewImage(item): "preview-image-\(item.id)"
             case let .renameCollection(collection): "rename-collection-\(collection.id)"
             }
         }
@@ -85,6 +87,8 @@ struct RootView: View {
                 ItemEditor(item: item, collections: snapshot.collections, tray: tray) {
                     await reload()
                 }
+            case let .previewImage(item):
+                TrayImageDetailView(item: item, tray: tray)
             case let .renameCollection(collection):
                 CollectionEditor(
                     title: "Rename Collection",
@@ -195,7 +199,7 @@ struct RootView: View {
             ContentUnavailableView {
                 Label("Your tray is empty", systemImage: "tray")
             } description: {
-                Text("Copy some text, then tap Paste to keep it here.")
+                Text("Paste copied text or share an image to keep it here.")
             } actions: {
                 saveClipboardButton.buttonBorderShape(.capsule)
             }
@@ -296,7 +300,26 @@ struct RootView: View {
     @ViewBuilder
     private func itemRow(_ item: TrayItem, section: Section) -> some View {
         HStack(spacing: 12) {
-            if section == .trash {
+            if item.kind == .image {
+                if section == .trash {
+                    TrayImageRow(
+                        item: item,
+                        collectionName: collectionName(for: item),
+                        tray: tray
+                    )
+                } else {
+                    Button { presentedSheet = .previewImage(item) } label: {
+                        TrayImageRow(
+                            item: item,
+                            collectionName: collectionName(for: item),
+                            tray: tray
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .accessibilityHint("Opens image preview and sharing")
+                }
+            } else if section == .trash {
                 TrayTextRow(item: item, collectionName: collectionName(for: item))
             } else {
                 Button { copy(item) } label: {
@@ -553,10 +576,12 @@ private struct ItemEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Content") {
-                    TextEditor(text: $text)
-                        .frame(minHeight: 120)
-                        .accessibilityLabel("Object text")
+                if item.kind != .image {
+                    Section("Content") {
+                        TextEditor(text: $text)
+                            .frame(minHeight: 120)
+                            .accessibilityLabel("Object text")
+                    }
                 }
                 Section("Details") {
                     TextField("Title", text: $title)
