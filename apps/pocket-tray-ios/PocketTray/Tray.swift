@@ -374,6 +374,7 @@ struct Tray: Sendable {
             asset: assetWrite?.asset,
             expiresAt: capturedAt.addingTimeInterval(TrayRetention.recent)
         )
+        try Task.checkCancellation()
         guard let saved = try await repository.apply(
             .capture(item, assetWrite: assetWrite)
         ).item else {
@@ -738,8 +739,10 @@ actor InMemoryTrayRepository: TrayRepository {
     }
 
     func apply(_ mutation: TrayMutation) throws -> TrayMutationResult {
+        try Task.checkCancellation()
         if case let .capture(_, assetWrite: assetWrite?) = mutation {
             try assetStore.persist(assetWrite)
+            try Task.checkCancellation()
         }
         return store.apply(mutation)
     }

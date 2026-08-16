@@ -25,6 +25,7 @@ struct TrayAssetWrite: Equatable, Sendable {
 struct TrayAssetResource: Equatable, Sendable {
     let asset: TrayAsset
     let url: URL
+    let exportURL: URL
     let data: Data
 }
 
@@ -64,15 +65,16 @@ enum ImageAssetFactory {
         else {
             throw TrayAssetError.unsupportedType
         }
-        guard isDecodableImage(payload.data) else {
+        guard let decodedTypeIdentifier = decodedTypeIdentifier(for: payload.data) else {
             throw TrayAssetError.invalidImage
         }
+        let decodedType = UTType(decodedTypeIdentifier) ?? type
 
         let asset = TrayAsset(
             digest: digest(of: payload.data),
             byteCount: payload.data.count,
-            typeIdentifier: payload.typeIdentifier,
-            fileExtension: type.preferredFilenameExtension?.lowercased() ?? "img",
+            typeIdentifier: decodedType.identifier,
+            fileExtension: decodedType.preferredFilenameExtension?.lowercased() ?? "img",
             originalFilename: payload.filename
         )
         return TrayAssetWrite(asset: asset, data: payload.data)
@@ -86,19 +88,30 @@ enum ImageAssetFactory {
         guard
             data.count == asset.byteCount,
             digest(of: data) == asset.digest,
-            isDecodableImage(data)
+            decodedTypeIdentifier(for: data) != nil
         else {
             throw TrayAssetError.corrupt
         }
     }
 
-    private static func isDecodableImage(_ data: Data) -> Bool {
+    private static func decodedTypeIdentifier(for data: Data) -> String? {
         guard
             !data.isEmpty,
             let source = CGImageSourceCreateWithData(data as CFData, nil)
         else {
-            return false
+            return nil
         }
-        return CGImageSourceGetCount(source) > 0
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 1
+        ]
+        guard CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            options as CFDictionary
+        ) != nil else {
+            return nil
+        }
+        return CGImageSourceGetType(source) as String?
     }
 }

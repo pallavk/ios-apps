@@ -1,11 +1,18 @@
 import UIKit
-import UniformTypeIdentifiers
 
 @MainActor
 final class ShareViewController: UIViewController {
+    private enum CaptureState {
+        case capturing
+        case committing
+        case finished
+    }
+
     private let statusLabel = UILabel()
     private let actionButton = UIButton(type: .system)
     private var hasStarted = false
+    private var captureState = CaptureState.capturing
+    private var captureTask: Task<Void, Never>?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -52,15 +59,26 @@ final class ShareViewController: UIViewController {
             return
         }
 
-        Task {
+        captureTask = Task {
+            defer { captureTask = nil }
             do {
                 let repository = try FileTrayRepository.sharedContainer()
                 let tray = Tray(repository: repository)
                 _ = try await ShareCapture(tray: tray).capture(
-                    NSItemProviderShareItem(provider: provider)
+                    NSItemProviderShareItem(provider: provider),
+                    willCommit: { [weak self] in
+                        guard let self else { return }
+                        captureState = .committing
+                        actionButton.isEnabled = false
+                    }
                 )
+                try Task.checkCancellation()
+                captureState = .finished
+                actionButton.isEnabled = true
                 statusLabel.text = "Saved to Pocket Tray"
                 actionButton.configuration?.title = "Done"
+            } catch is CancellationError {
+                return
             } catch {
                 showFailure(error)
             }
@@ -68,101 +86,22 @@ final class ShareViewController: UIViewController {
     }
 
     private func showFailure(_ error: Error) {
+        captureState = .finished
+        actionButton.isEnabled = true
         statusLabel.text = error.localizedDescription
         actionButton.configuration?.title = "Close"
     }
 
     @objc private func finish() {
-        extensionContext?.completeRequest(returningItems: nil)
-    }
-}
-
-private final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProviding {
-    private let provider: NSItemProvider
-
-    init(provider: NSItemProvider) {
-        self.provider = provider
-    }
-
-    var canLoadImage: Bool {
-        imageTypeIdentifier != nil
-    }
-
-    var canLoadURL: Bool {
-        provider.hasItemConformingToTypeIdentifier(UTType.url.identifier)
-    }
-
-    var canLoadText: Bool {
-        provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier)
-            || provider.hasItemConformingToTypeIdentifier(UTType.text.identifier)
-    }
-
-    func loadImage() async throws -> ImagePayload {
-        guard let typeIdentifier = imageTypeIdentifier else {
-            throw ShareCaptureError.unsupported
-        }
-        let data = try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<Data, Error>) in
-            provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: ShareCaptureError.unreadable)
-                }
-            }
-        }
-        return ImagePayload(
-            data: data,
-            typeIdentifier: typeIdentifier,
-            filename: provider.suggestedName
-        )
-    }
-
-    func loadURL() async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
-            provider.loadItem(
-                forTypeIdentifier: UTType.url.identifier,
-                options: nil
-            ) { item, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let url = item as? URL {
-                    continuation.resume(returning: url)
-                } else if let string = item as? String, let url = URL(string: string) {
-                    continuation.resume(returning: url)
-                } else {
-                    continuation.resume(throwing: ShareCaptureError.unreadable)
-                }
-            }
-        }
-    }
-
-    func loadText() async throws -> String {
-        let typeIdentifier = provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier)
-            ? UTType.plainText.identifier
-            : UTType.text.identifier
-        return try await withCheckedThrowingContinuation { continuation in
-            provider.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { item, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let string = item as? String {
-                    continuation.resume(returning: string)
-                } else if let attributedString = item as? NSAttributedString {
-                    continuation.resume(returning: attributedString.string)
-                } else if let data = item as? Data, let string = String(data: data, encoding: .utf8) {
-                    continuation.resume(returning: string)
-                } else {
-                    continuation.resume(throwing: ShareCaptureError.unreadable)
-                }
-            }
-        }
-    }
-
-    private var imageTypeIdentifier: String? {
-        provider.registeredTypeIdentifiers.first { identifier in
-            UTType(identifier)?.conforms(to: .image) == true
+        if captureState == .capturing {
+            captureState = .finished
+            captureTask?.cancel()
+            captureTask = nil
+            extensionContext?.cancelRequest(withError: CancellationError())
+        } else if captureState == .committing {
+            return
+        } else {
+            extensionContext?.completeRequest(returningItems: nil)
         }
     }
 }

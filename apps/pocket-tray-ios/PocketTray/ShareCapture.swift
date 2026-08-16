@@ -38,7 +38,10 @@ struct ShareCapture: Sendable {
         self.tray = tray
     }
 
-    func capture(_ provider: any ShareItemProviding) async throws -> TrayItem {
+    func capture(
+        _ provider: any ShareItemProviding,
+        willCommit: @MainActor @Sendable () -> Void = {}
+    ) async throws -> TrayItem {
         let content: CaptureContent
         do {
             if provider.canLoadImage {
@@ -56,6 +59,8 @@ struct ShareCapture: Sendable {
             throw ShareCaptureError.unreadable
         }
 
+        try Task.checkCancellation()
+        await willCommit()
         return try await tray.capture(content)
     }
 }

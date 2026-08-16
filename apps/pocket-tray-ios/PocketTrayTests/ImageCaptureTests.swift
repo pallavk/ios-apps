@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import UniformTypeIdentifiers
 @testable import PocketTray
 
 final class ImageCaptureTests: XCTestCase {
@@ -25,6 +26,22 @@ final class ImageCaptureTests: XCTestCase {
         func loadText() async throws -> String {
             "wrong"
         }
+    }
+
+    private struct CancellationIgnoringImageProvider: ShareItemProviding {
+        let payload: ImagePayload
+
+        var canLoadImage: Bool { true }
+        var canLoadURL: Bool { false }
+        var canLoadText: Bool { false }
+
+        func loadImage() async throws -> ImagePayload {
+            try? await Task.sleep(for: .milliseconds(50))
+            return payload
+        }
+
+        func loadURL() async throws -> URL { throw ShareCaptureError.unsupported }
+        func loadText() async throws -> String { throw ShareCaptureError.unsupported }
     }
 
     private struct RejectingAssetWriter: AssetDataWriting {
@@ -111,6 +128,63 @@ final class ImageCaptureTests: XCTestCase {
         }
     }
 
+    func testImagePayloadRejectsContainerWithoutDecodableFrame() {
+        let truncatedContainer = Data(onePixelPNG.prefix(40))
+
+        XCTAssertThrowsError(
+            try ImageAssetFactory.makeWrite(
+                from: ImagePayload(
+                    data: truncatedContainer,
+                    typeIdentifier: "public.png",
+                    filename: "truncated.png"
+                )
+            )
+        ) {
+            XCTAssertEqual($0 as? TrayAssetError, .invalidImage)
+        }
+    }
+
+    func testImagePayloadDerivesConcreteTypeFromBytes() throws {
+        let write = try ImageAssetFactory.makeWrite(
+            from: ImagePayload(
+                data: onePixelPNG,
+                typeIdentifier: "public.image",
+                filename: "abstract"
+            )
+        )
+
+        XCTAssertEqual(write.asset.typeIdentifier, "public.png")
+        XCTAssertEqual(write.asset.fileExtension, "png")
+    }
+
+    func testNonImageTypeCreatesNoRecordOrAsset() async throws {
+        let root = try temporaryRoot()
+        let tray = Tray(
+            repository: FileTrayRepository(fileURL: root.appending(path: "tray.json"))
+        )
+
+        do {
+            _ = try await tray.capture(
+                .image(
+                    ImagePayload(
+                        data: Data("not an image".utf8),
+                        typeIdentifier: UTType.plainText.identifier,
+                        filename: "notes.txt"
+                    )
+                )
+            )
+            XCTFail("Expected a non-image type to be rejected")
+        } catch {
+            XCTAssertEqual(error as? TrayAssetError, .unsupportedType)
+        }
+
+        let recent = try await tray.recent()
+        XCTAssertTrue(recent.isEmpty)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: root.appending(path: "assets").path)
+        )
+    }
+
     func testIdenticalImagesDeduplicateAndPreserveMetadata() async throws {
         let repository = InMemoryTrayRepository()
         let firstTray = Tray(
@@ -181,6 +255,8 @@ final class ImageCaptureTests: XCTestCase {
 
         XCTAssertEqual(resource.data, onePixelPNG)
         XCTAssertEqual(try Data(contentsOf: resource.url), onePixelPNG)
+        XCTAssertEqual(resource.exportURL.lastPathComponent, "original.png")
+        XCTAssertEqual(try Data(contentsOf: resource.exportURL), onePixelPNG)
         XCTAssertEqual(recent.first?.id, item.id)
     }
 
@@ -223,6 +299,78 @@ final class ImageCaptureTests: XCTestCase {
         }
         let recentAfterCorruptAsset = try await tray.recent()
         XCTAssertEqual(recentAfterCorruptAsset.map(\.id), [item.id])
+    }
+
+    func testSameSizeDigestMismatchRemainsARecordButCannotBeRead() async throws {
+        let root = try temporaryRoot()
+        let tray = Tray(
+            repository: FileTrayRepository(fileURL: root.appending(path: "tray.json"))
+        )
+        let item = try await tray.capture(
+            .image(
+                ImagePayload(
+                    data: onePixelPNG,
+                    typeIdentifier: UTType.png.identifier,
+                    filename: "shot.png"
+                )
+            )
+        )
+        let asset = try XCTUnwrap(item.asset)
+        let assetURL = root.appending(
+            path: "assets/\(asset.digest).\(asset.fileExtension)"
+        )
+        var changedBytes = onePixelPNG
+        changedBytes[changedBytes.startIndex] ^= 0x01
+        try changedBytes.write(to: assetURL)
+
+        do {
+            _ = try await tray.assetResource(for: item)
+            XCTFail("Expected a digest mismatch error")
+        } catch {
+            XCTAssertEqual(error as? TrayAssetError, .corrupt)
+        }
+        let recent = try await tray.recent()
+        XCTAssertEqual(recent.map(\.id), [item.id])
+    }
+
+    func testInternallyConsistentUndecodableAssetRemainsARecordButCannotBeRead() async throws {
+        let root = try temporaryRoot()
+        let fileURL = root.appending(path: "tray.json")
+        let undecodableData = Data(onePixelPNG.prefix(40))
+        let asset = TrayAsset(
+            digest: ImageAssetFactory.digest(of: undecodableData),
+            byteCount: undecodableData.count,
+            typeIdentifier: UTType.png.identifier,
+            fileExtension: "png",
+            originalFilename: "broken.png"
+        )
+        let now = Date()
+        let item = TrayItem(
+            id: UUID(),
+            kind: .image,
+            text: "broken.png",
+            capturedAt: now,
+            asset: asset,
+            expiresAt: now.addingTimeInterval(TrayRetention.recent)
+        )
+        try FileManager.default.createDirectory(
+            at: root.appending(path: "assets"),
+            withIntermediateDirectories: true
+        )
+        try undecodableData.write(
+            to: root.appending(path: "assets/\(asset.digest).png")
+        )
+        try JSONEncoder().encode(TrayStore(items: [item])).write(to: fileURL)
+
+        let relaunched = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        let recent = try await relaunched.recent()
+        XCTAssertEqual(recent.map(\.id), [item.id])
+        do {
+            _ = try await relaunched.assetResource(for: item)
+            XCTFail("Expected an undecodable asset error")
+        } catch {
+            XCTAssertEqual(error as? TrayAssetError, .corrupt)
+        }
     }
 
     func testAssetWriteFailuresCreateNoRecordOrFinalAsset() async throws {
@@ -333,6 +481,32 @@ final class ImageCaptureTests: XCTestCase {
         XCTAssertTrue(recent.isEmpty)
     }
 
+    func testCancellingSharedImageCaptureCreatesNoObject() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let provider = CancellationIgnoringImageProvider(
+            payload: ImagePayload(
+                data: onePixelPNG,
+                typeIdentifier: "public.png",
+                filename: "cancelled.png"
+            )
+        )
+        let captureTask = Task {
+            try await ShareCapture(tray: tray).capture(provider)
+        }
+        try await Task.sleep(for: .milliseconds(10))
+        captureTask.cancel()
+
+        do {
+            _ = try await captureTask.value
+            XCTFail("Expected capture cancellation")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+        let recent = try await tray.recent()
+        XCTAssertTrue(recent.isEmpty)
+    }
+
     func testShareCapturePreservesJPEGRepresentationBytes() async throws {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2))
         let image = renderer.image { context in
@@ -357,6 +531,25 @@ final class ImageCaptureTests: XCTestCase {
         XCTAssertEqual(item.kind, .image)
         XCTAssertEqual(item.asset?.fileExtension, "jpeg")
         XCTAssertEqual(resource.data, jpeg)
+        XCTAssertEqual(resource.exportURL.lastPathComponent, "photo.jpg")
+    }
+
+    func testExportFilenameUsesTheValidatedImageType() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let item = try await tray.capture(
+            .image(
+                ImagePayload(
+                    data: onePixelPNG,
+                    typeIdentifier: UTType.image.identifier,
+                    filename: "screenshot.txt"
+                )
+            )
+        )
+
+        let resource = try await tray.assetResource(for: item)
+
+        XCTAssertEqual(resource.exportURL.lastPathComponent, "screenshot.png")
+        XCTAssertEqual(try Data(contentsOf: resource.exportURL), onePixelPNG)
     }
 
     func testThumbnailLoaderBoundsDecodedPixelDimensions() async throws {
@@ -386,6 +579,43 @@ final class ImageCaptureTests: XCTestCase {
 
         XCTAssertLessThanOrEqual(max(cgImage.width, cgImage.height), 64)
         XCTAssertEqual(try Data(contentsOf: loaded.originalURL), png)
+    }
+
+    func testNSItemProviderLoadsDataBackedImageRepresentation() async throws {
+        let imageData = onePixelPNG
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.png.identifier,
+            visibility: .all
+        ) { completion in
+            completion(imageData, nil)
+            return nil
+        }
+
+        let payload = try await NSItemProviderShareItem(provider: provider).loadImage()
+
+        XCTAssertEqual(payload.data, imageData)
+        XCTAssertEqual(payload.typeIdentifier, UTType.png.identifier)
+    }
+
+    func testNSItemProviderLoadsFileBackedImageRepresentation() async throws {
+        let root = try temporaryRoot()
+        let imageURL = root.appending(path: "file-backed.png")
+        try onePixelPNG.write(to: imageURL)
+        let provider = NSItemProvider()
+        provider.registerFileRepresentation(
+            forTypeIdentifier: UTType.png.identifier,
+            fileOptions: .openInPlace,
+            visibility: .all
+        ) { completion in
+            completion(imageURL, true, nil)
+            return nil
+        }
+
+        let payload = try await NSItemProviderShareItem(provider: provider).loadImage()
+
+        XCTAssertEqual(payload.data, onePixelPNG)
+        XCTAssertEqual(payload.typeIdentifier, UTType.png.identifier)
     }
 
     private func temporaryRoot() throws -> URL {

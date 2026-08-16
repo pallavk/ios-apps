@@ -7,22 +7,66 @@ struct LoadedTrayImage: @unchecked Sendable {
     let originalURL: URL
 }
 
+private actor TrayImageLoadGate {
+    private var availablePermits: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) {
+        availablePermits = limit
+    }
+
+    func withPermit<Value: Sendable>(
+        _ operation: @Sendable () async throws -> Value
+    ) async throws -> Value {
+        await acquire()
+        do {
+            try Task.checkCancellation()
+            let value = try await operation()
+            release()
+            return value
+        } catch {
+            release()
+            throw error
+        }
+    }
+
+    private func acquire() async {
+        if availablePermits > 0 {
+            availablePermits -= 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    private func release() {
+        if waiters.isEmpty {
+            availablePermits += 1
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
+}
+
 enum TrayImageLoader {
+    private static let loadGate = TrayImageLoadGate(limit: 2)
+
     static func thumbnail(
         for item: TrayItem,
         tray: Tray,
         maxPixelSize: Int
     ) async throws -> LoadedTrayImage {
-        let resource = try await tray.assetResource(for: item)
-        let data = resource.data
-        let image = try await Task.detached(priority: .userInitiated) {
+        try await loadGate.withPermit {
+            let resource = try await tray.assetResource(for: item)
+            try Task.checkCancellation()
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
             ]
             guard
-                let source = CGImageSourceCreateWithData(data as CFData, nil),
+                let source = CGImageSourceCreateWithData(resource.data as CFData, nil),
                 let thumbnail = CGImageSourceCreateThumbnailAtIndex(
                     source,
                     0,
@@ -31,9 +75,12 @@ enum TrayImageLoader {
             else {
                 throw TrayAssetError.corrupt
             }
-            return UIImage(cgImage: thumbnail)
-        }.value
-        return LoadedTrayImage(image: image, originalURL: resource.url)
+            try Task.checkCancellation()
+            return LoadedTrayImage(
+                image: UIImage(cgImage: thumbnail),
+                originalURL: resource.exportURL
+            )
+        }
     }
 }
 

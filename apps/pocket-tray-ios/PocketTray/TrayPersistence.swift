@@ -55,8 +55,10 @@ actor FileTrayRepository: TrayRepository {
     }
 
     func apply(_ mutation: TrayMutation) throws -> TrayMutationResult {
+        try Task.checkCancellation()
         if case let .capture(_, assetWrite: assetWrite?) = mutation {
             try assetStore.persist(assetWrite)
+            try Task.checkCancellation()
         }
         return try updateStore { store in
             store.apply(mutation)
