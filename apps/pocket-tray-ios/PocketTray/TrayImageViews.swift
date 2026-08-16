@@ -88,10 +88,16 @@ struct TrayImageRow: View {
     let item: TrayItem
     let collectionName: String?
     let tray: Tray
+    @State private var isUnavailable = false
 
     var body: some View {
         HStack(spacing: 12) {
-            TrayImageThumbnail(item: item, tray: tray, maxPixelSize: 160)
+            TrayImageThumbnail(
+                item: item,
+                tray: tray,
+                maxPixelSize: 160,
+                isUnavailable: $isUnavailable
+            )
                 .frame(width: 72, height: 72)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
 
@@ -118,6 +124,12 @@ struct TrayImageRow: View {
                     Label(collectionName, systemImage: "folder")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                if isUnavailable {
+                    Label("Original unavailable", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
 
                 lifecycleLabel
@@ -213,9 +225,9 @@ private struct TrayImageThumbnail: View {
     let item: TrayItem
     let tray: Tray
     let maxPixelSize: Int
+    @Binding var isUnavailable: Bool
 
     @State private var image: UIImage?
-    @State private var isUnavailable = false
 
     var body: some View {
         ZStack {
@@ -241,6 +253,7 @@ private struct TrayImageThumbnail: View {
                     tray: tray,
                     maxPixelSize: maxPixelSize
                 ).image
+                isUnavailable = false
             } catch {
                 isUnavailable = true
             }

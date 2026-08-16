@@ -69,6 +69,8 @@ struct RootView: View {
     @State private var pendingSensitiveCapture: PreparedTrayCapture?
     @State private var sensitivePreviewSession = SensitivePreviewSession()
     @State private var hasSupportedClipboardContent = false
+    @State private var storageWarningMessage: String?
+    @State private var hasShownStorageWarning = false
 
     init(
         tray: Tray,
@@ -94,6 +96,7 @@ struct RootView: View {
         }
         .task {
             await reload()
+            await refreshStorageWarning()
             await refreshClipboardAvailability()
             presentControlCaptureIfRequested()
         }
@@ -101,6 +104,7 @@ struct RootView: View {
             if newPhase == .active {
                 Task {
                     await reload()
+                    await refreshStorageWarning()
                     await refreshClipboardAvailability()
                     presentControlCaptureIfRequested()
                 }
@@ -132,7 +136,7 @@ struct RootView: View {
                     await reload()
                 }
             case .settings:
-                AppLockSettingsView(controller: appLockController)
+                AppLockSettingsView(controller: appLockController, tray: tray)
             case .systemCapture:
                 ControlCapturePrompt { captureCurrentClipboard() }
             }
@@ -141,6 +145,11 @@ struct RootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "Please try again.")
+        }
+        .alert("Pocket Tray storage is over 500 MB", isPresented: isShowingStorageWarning) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(storageWarningMessage ?? "Pocket Tray will keep your originals unchanged. Review usage in Settings.")
         }
         .confirmationDialog(
             "Save possible sensitive content?",
@@ -647,6 +656,7 @@ struct RootView: View {
                 try await operation()
                 feedbackMessage = successMessage
                 await reload()
+                await refreshStorageWarning()
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -723,6 +733,22 @@ struct RootView: View {
 
     private func refreshClipboardAvailability() async {
         hasSupportedClipboardContent = await clipboardAvailabilityChecker.hasSupportedContent()
+    }
+
+    private var isShowingStorageWarning: Binding<Bool> {
+        Binding(
+            get: { storageWarningMessage != nil },
+            set: { if !$0 { storageWarningMessage = nil } }
+        )
+    }
+
+    private func refreshStorageWarning() async {
+        guard !hasShownStorageWarning else { return }
+        guard let report = try? await tray.storageReport(), report.exceedsWarningThreshold else {
+            return
+        }
+        hasShownStorageWarning = true
+        storageWarningMessage = "Pocket Tray is using \(ByteCountFormatter.string(fromByteCount: report.totalBytes, countStyle: .file)). Nothing was deleted or compressed. Review usage in Settings."
     }
 
     private func presentControlCaptureIfRequested() {

@@ -12,6 +12,12 @@ final class TrayTests: XCTestCase {
         case unavailable
     }
 
+    private struct RejectingMetadataWriter: TrayMetadataWriting {
+        func write(_ data: Data, to url: URL) throws {
+            throw CocoaError(.fileWriteOutOfSpace)
+        }
+    }
+
     private actor FailingTrayRepository: TrayRepository {
         func apply(_ mutation: TrayMutation) throws -> TrayMutationResult {
             throw RepositoryFailure.unavailable
@@ -23,6 +29,15 @@ final class TrayTests: XCTestCase {
 
         func resource(for asset: TrayAsset) throws -> TrayAssetResource {
             throw RepositoryFailure.unavailable
+        }
+
+        func storageReport(at date: Date) -> TrayStorageReport {
+            TrayStorageReport(
+                metadataBytes: 0,
+                assetBytes: 0,
+                unavailableAssetCount: 0,
+                recoveredMetadata: false
+            )
         }
     }
 
@@ -553,6 +568,84 @@ final class TrayTests: XCTestCase {
         let recent = try await secondLaunch.recent()
 
         XCTAssertEqual(recent, [captured])
+    }
+
+    func testStorageReportIncludesCommittedMetadataAndWarnsOnlyBeyondFiveHundredMB() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let fileURL = directory.appending(path: "tray.json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let tray = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        _ = try await tray.capture(.text("Count my metadata"))
+
+        let report = try await tray.storageReport()
+
+        XCTAssertGreaterThan(report.metadataBytes, 0)
+        XCTAssertEqual(report.assetBytes, 0)
+        XCTAssertEqual(report.totalBytes, report.metadataBytes)
+        XCTAssertFalse(report.exceedsWarningThreshold)
+        XCTAssertFalse(
+            TrayStorageReport(
+                metadataBytes: 1,
+                assetBytes: TrayStorageReport.warningThresholdBytes - 1,
+                unavailableAssetCount: 0,
+                recoveredMetadata: false
+            ).exceedsWarningThreshold
+        )
+        XCTAssertTrue(
+            TrayStorageReport(
+                metadataBytes: 1,
+                assetBytes: TrayStorageReport.warningThresholdBytes,
+                unavailableAssetCount: 0,
+                recoveredMetadata: false
+            ).exceedsWarningThreshold
+        )
+    }
+
+    func testCorruptedMetadataRecoversLatestCommittedStoreFromBackup() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let fileURL = directory.appending(path: "tray.json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let firstLaunch = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        let first = try await firstLaunch.capture(.text("First"))
+        let second = try await firstLaunch.capture(.text("Second"))
+        try Data("corrupted".utf8).write(to: fileURL)
+
+        let relaunched = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        let snapshot = try await relaunched.snapshot()
+        let report = try await relaunched.storageReport()
+
+        XCTAssertEqual(Set(snapshot.recent.map(\.id)), [first.id, second.id])
+        XCTAssertTrue(report.recoveredMetadata)
+    }
+
+    func testOutOfSpaceMetadataFailureIsActionableAndPreservesPreviousCommit() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let fileURL = directory.appending(path: "tray.json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let committed = try await Tray(
+            repository: FileTrayRepository(fileURL: fileURL)
+        ).capture(.text("Already safe"))
+        let failingTray = Tray(
+            repository: FileTrayRepository(
+                fileURL: fileURL,
+                metadataWriter: RejectingMetadataWriter()
+            )
+        )
+
+        do {
+            _ = try await failingTray.capture(.text("Must not appear saved"))
+            XCTFail("Expected storage exhaustion")
+        } catch {
+            XCTAssertEqual(error as? TrayPersistenceError, .insufficientStorage)
+            XCTAssertTrue(error.localizedDescription.lowercased().contains("free up space"))
+        }
+
+        let relaunched = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        let recent = try await relaunched.recent()
+        XCTAssertEqual(recent, [committed])
     }
 
     func testLifecycleStateSurvivesRepositoryRelaunch() async throws {

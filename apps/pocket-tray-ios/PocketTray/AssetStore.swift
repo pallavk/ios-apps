@@ -39,7 +39,8 @@ struct AssetStore: Sendable {
         self.writer = writer
     }
 
-    func persist(_ write: TrayAssetWrite) throws {
+    @discardableResult
+    func persist(_ write: TrayAssetWrite) throws -> Bool {
         try validatePathComponents(of: write.asset)
         try FileManager.default.createDirectory(
             at: directoryURL,
@@ -47,20 +48,23 @@ struct AssetStore: Sendable {
         )
         let finalURL = url(for: write.asset)
         if FileManager.default.fileExists(atPath: finalURL.path) {
-            _ = try resource(for: write.asset)
-            return
+            if (try? validatedData(for: write.asset)) != nil {
+                return false
+            }
+            try FileManager.default.removeItem(at: finalURL)
         }
 
         do {
             try writer.write(write.data, to: finalURL)
         } catch {
             if FileManager.default.fileExists(atPath: finalURL.path),
-               (try? resource(for: write.asset)) != nil {
-                return
+               (try? validatedData(for: write.asset)) != nil {
+                return false
             }
             throw error
         }
-        _ = try resource(for: write.asset)
+        _ = try validatedData(for: write.asset)
+        return true
     }
 
     func resource(for asset: TrayAsset) throws -> TrayAssetResource {
@@ -69,8 +73,7 @@ struct AssetStore: Sendable {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw TrayAssetError.missing
         }
-        let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
-        try TrayAssetValidator.validate(data, as: asset)
+        let data = try validatedData(for: asset)
         let exportURL = try exportURL(for: asset, storedAt: fileURL, data: data)
         return TrayAssetResource(
             asset: asset,
@@ -78,6 +81,49 @@ struct AssetStore: Sendable {
             exportURL: exportURL,
             data: data
         )
+    }
+
+    func remove(_ asset: TrayAsset) throws {
+        try validatePathComponents(of: asset)
+        let fileURL = url(for: asset)
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            try FileManager.default.removeItem(at: fileURL)
+        }
+        let exportDirectory = directoryURL
+            .appending(path: ".exports", directoryHint: .isDirectory)
+            .appending(path: asset.digest, directoryHint: .isDirectory)
+        if FileManager.default.fileExists(atPath: exportDirectory.path) {
+            try FileManager.default.removeItem(at: exportDirectory)
+        }
+    }
+
+    func storedByteCount(for asset: TrayAsset) throws -> Int64 {
+        Int64(try validatedData(for: asset).count)
+    }
+
+    func removeUnreferencedAssets(keeping assets: [TrayAsset]) throws {
+        guard FileManager.default.fileExists(atPath: directoryURL.path) else { return }
+        let keptFilenames = Set(assets.map { "\($0.digest).\($0.fileExtension)" })
+        for url in try FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey])
+            if values.isRegularFile == true, !keptFilenames.contains(url.lastPathComponent) {
+                try FileManager.default.removeItem(at: url)
+            }
+        }
+
+        let exportsURL = directoryURL.appending(path: ".exports", directoryHint: .isDirectory)
+        guard FileManager.default.fileExists(atPath: exportsURL.path) else { return }
+        let keptDigests = Set(assets.map(\.digest))
+        for url in try FileManager.default.contentsOfDirectory(
+            at: exportsURL,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) where !keptDigests.contains(url.lastPathComponent) {
+            try FileManager.default.removeItem(at: url)
+        }
     }
 
     func url(for asset: TrayAsset) -> URL {
@@ -96,6 +142,16 @@ struct AssetStore: Sendable {
         else {
             throw TrayAssetError.corrupt
         }
+    }
+
+    private func validatedData(for asset: TrayAsset) throws -> Data {
+        let fileURL = url(for: asset)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            throw TrayAssetError.missing
+        }
+        let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+        try TrayAssetValidator.validate(data, as: asset)
+        return data
     }
 
     private func exportURL(

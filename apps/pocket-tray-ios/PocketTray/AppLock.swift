@@ -171,11 +171,55 @@ private struct AppLockedView: View {
 struct AppLockSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var controller: AppLockController
+    let tray: Tray
     @State private var isChangingSetting = false
+    @State private var storageReport: TrayStorageReport?
+    @State private var storageError: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Storage") {
+                    if let storageReport {
+                        LabeledContent("Pocket Tray usage") {
+                            Text(storageReport.totalBytes, format: .byteCount(style: .file))
+                        }
+                        if storageReport.exceedsWarningThreshold {
+                            Label(
+                                "Usage is over 500 MB. Pocket Tray will not delete or compress your objects automatically.",
+                                systemImage: "externaldrive.badge.exclamationmark"
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("storage-threshold-warning")
+                        }
+                        if storageReport.unavailableAssetCount > 0 {
+                            Label(
+                                "\(storageReport.unavailableAssetCount) original \(storageReport.unavailableAssetCount == 1 ? "file is" : "files are") missing or damaged. Re-capture the original or delete the affected object.",
+                                systemImage: "exclamationmark.triangle"
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("unavailable-assets-warning")
+                        }
+                        if storageReport.recoveredMetadata {
+                            Label(
+                                "Pocket Tray recovered its saved index from the latest backup.",
+                                systemImage: "checkmark.arrow.trianglehead.counterclockwise"
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("metadata-recovery-notice")
+                        }
+                    } else if let storageError {
+                        Label(storageError, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    } else {
+                        ProgressView("Calculating usage…")
+                    }
+                    Button("Refresh Storage Status") { Task { await loadStorageReport() } }
+                }
                 Section("Privacy") {
                     Toggle(
                         "Require Face ID or Passcode",
@@ -196,6 +240,7 @@ struct AppLockSettingsView: View {
                     }
                 }
             }
+            .task { await loadStorageReport() }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -203,6 +248,15 @@ struct AppLockSettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+
+    private func loadStorageReport() async {
+        do {
+            storageReport = try await tray.storageReport()
+            storageError = nil
+        } catch {
+            storageError = error.localizedDescription
         }
     }
 

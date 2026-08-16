@@ -63,6 +63,12 @@ final class ImageCaptureTests: XCTestCase {
         }
     }
 
+    private struct RejectingMetadataWriter: TrayMetadataWriting {
+        func write(_ data: Data, to url: URL) throws {
+            throw CocoaError(.fileWriteOutOfSpace)
+        }
+    }
+
     private let onePixelPNG = Data(base64Encoded:
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
     )!
@@ -398,7 +404,8 @@ final class ImageCaptureTests: XCTestCase {
                 )
                 XCTFail("Expected the asset write to fail")
             } catch {
-                XCTAssertTrue(error is CocoaError)
+                XCTAssertTrue(error is TrayPersistenceError)
+                XCTAssertTrue(error.localizedDescription.contains("Pocket Tray"))
             }
 
             let recent = try await tray.recent()
@@ -409,6 +416,102 @@ final class ImageCaptureTests: XCTestCase {
             ).filter { !$0.lastPathComponent.hasPrefix(".") }
             XCTAssertTrue(finalAssets.isEmpty)
         }
+    }
+
+    func testMetadataFailureRollsBackNewAssetAndReportsNoSuccessfulCapture() async throws {
+        let root = try temporaryRoot()
+        let tray = Tray(
+            repository: FileTrayRepository(
+                fileURL: root.appending(path: "tray.json"),
+                metadataWriter: RejectingMetadataWriter()
+            )
+        )
+
+        do {
+            _ = try await tray.capture(
+                .image(
+                    ImagePayload(
+                        data: onePixelPNG,
+                        typeIdentifier: UTType.png.identifier,
+                        filename: "not-saved.png"
+                    )
+                )
+            )
+            XCTFail("Expected metadata storage to fail")
+        } catch {
+            XCTAssertEqual(error as? TrayPersistenceError, .insufficientStorage)
+        }
+
+        let assetsURL = root.appending(path: "assets")
+        let visibleAssets = (try? FileManager.default.contentsOfDirectory(
+            at: assetsURL,
+            includingPropertiesForKeys: nil
+        ))?.filter { !$0.lastPathComponent.hasPrefix(".") } ?? []
+        XCTAssertTrue(visibleAssets.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "tray.json").path))
+    }
+
+    func testStorageReportCountsUniqueOriginalBytesAndUnavailableAssets() async throws {
+        let root = try temporaryRoot()
+        let tray = Tray(
+            repository: FileTrayRepository(fileURL: root.appending(path: "tray.json"))
+        )
+        let first = try await tray.capture(
+            .image(
+                ImagePayload(
+                    data: onePixelPNG,
+                    typeIdentifier: UTType.png.identifier,
+                    filename: "first.png"
+                )
+            )
+        )
+        _ = try await tray.capture(
+            .image(
+                ImagePayload(
+                    data: onePixelPNG,
+                    typeIdentifier: UTType.png.identifier,
+                    filename: "same-bytes.png"
+                )
+            )
+        )
+
+        let healthy = try await tray.storageReport()
+        XCTAssertEqual(healthy.assetBytes, Int64(onePixelPNG.count))
+        XCTAssertEqual(healthy.unavailableAssetCount, 0)
+
+        let asset = try XCTUnwrap(first.asset)
+        try FileManager.default.removeItem(
+            at: root.appending(path: "assets/\(asset.digest).\(asset.fileExtension)")
+        )
+        let missing = try await tray.storageReport()
+        XCTAssertEqual(missing.assetBytes, 0)
+        XCTAssertEqual(missing.unavailableAssetCount, 1)
+    }
+
+    func testPermanentDeletionReclaimsTheOriginalAsset() async throws {
+        let root = try temporaryRoot()
+        let tray = Tray(
+            repository: FileTrayRepository(fileURL: root.appending(path: "tray.json"))
+        )
+        let item = try await tray.capture(
+            .image(
+                ImagePayload(
+                    data: onePixelPNG,
+                    typeIdentifier: UTType.png.identifier,
+                    filename: "delete-me.png"
+                )
+            )
+        )
+        let asset = try XCTUnwrap(item.asset)
+        let assetURL = root.appending(path: "assets/\(asset.digest).\(asset.fileExtension)")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: assetURL.path))
+
+        _ = try await tray.moveToTrash(item.id)
+        try await tray.deletePermanently(item.id)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assetURL.path))
+        let report = try await tray.storageReport()
+        XCTAssertEqual(report.assetBytes, 0)
     }
 
     func testOverLimitImageCreatesNoRecordOrAsset() async throws {

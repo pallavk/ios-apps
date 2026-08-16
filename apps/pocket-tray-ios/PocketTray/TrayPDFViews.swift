@@ -146,6 +146,11 @@ struct TrayPDFRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if isUnavailable {
+                    Label("Original unavailable", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
                 lifecycleLabel.font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

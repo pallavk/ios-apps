@@ -1,5 +1,15 @@
 import Foundation
 
+protocol TrayMetadataWriting: Sendable {
+    func write(_ data: Data, to url: URL) throws
+}
+
+struct AtomicTrayMetadataWriter: TrayMetadataWriting {
+    func write(_ data: Data, to url: URL) throws {
+        try data.write(to: url, options: .atomic)
+    }
+}
+
 actor FileTrayRepository: TrayRepository {
     static let appGroupIdentifier = "group.com.pallavk.PocketTray"
 
@@ -7,16 +17,20 @@ actor FileTrayRepository: TrayRepository {
     private let legacyFileURL: URL?
     private let fileManager: FileManager
     private let assetStore: AssetStore
+    private let metadataWriter: any TrayMetadataWriting
+    private var recoveredMetadata = false
 
     init(
         fileURL: URL,
         legacyFileURL: URL? = nil,
         assetDirectoryURL: URL? = nil,
-        assetWriter: any AssetDataWriting = AtomicAssetDataWriter()
+        assetWriter: any AssetDataWriting = AtomicAssetDataWriter(),
+        metadataWriter: any TrayMetadataWriting = AtomicTrayMetadataWriter()
     ) {
         self.fileURL = fileURL
         self.legacyFileURL = legacyFileURL
         self.fileManager = FileManager()
+        self.metadataWriter = metadataWriter
         self.assetStore = AssetStore(
             directoryURL: assetDirectoryURL
                 ?? fileURL.deletingLastPathComponent().appending(path: "assets"),
@@ -56,12 +70,26 @@ actor FileTrayRepository: TrayRepository {
 
     func apply(_ mutation: TrayMutation) throws -> TrayMutationResult {
         try Task.checkCancellation()
+        var createdAsset: TrayAsset?
         if case let .capture(_, assetWrite: assetWrite?) = mutation {
-            try assetStore.persist(assetWrite)
-            try Task.checkCancellation()
+            do {
+                if try assetStore.persist(assetWrite) {
+                    createdAsset = assetWrite.asset
+                }
+                try Task.checkCancellation()
+            } catch {
+                throw Self.actionableWriteError(error)
+            }
         }
-        return try updateStore { store in
-            store.apply(mutation)
+        do {
+            return try updateStore { store in
+                store.apply(mutation)
+            }
+        } catch {
+            if let createdAsset {
+                try? assetStore.remove(createdAsset)
+            }
+            throw Self.actionableWriteError(error)
         }
     }
 
@@ -76,11 +104,61 @@ actor FileTrayRepository: TrayRepository {
         }
     }
 
+    func storageReport(at date: Date) throws -> TrayStorageReport {
+        try migrateLegacyFileIfNeeded()
+        let store = try loadStore(at: fileURL)
+        let assets = Dictionary(
+            store.items.compactMap(\.asset).map { ($0.digest, $0) },
+            uniquingKeysWith: { first, _ in first }
+        ).values
+        var assetBytes: Int64 = 0
+        var unavailableAssetCount = 0
+        for asset in assets {
+            do {
+                assetBytes += try assetStore.storedByteCount(for: asset)
+            } catch {
+                unavailableAssetCount += 1
+            }
+        }
+        return TrayStorageReport(
+            metadataBytes: Int64(try JSONEncoder().encode(store).count),
+            assetBytes: assetBytes,
+            unavailableAssetCount: unavailableAssetCount,
+            recoveredMetadata: recoveredMetadata
+        )
+    }
+
     private func loadStore(at url: URL) throws -> TrayStore {
+        let backupURL = backupURL(for: url)
         guard fileManager.fileExists(atPath: url.path) else {
+            if fileManager.fileExists(atPath: backupURL.path) {
+                do {
+                    let recovered = try decodeStore(Data(contentsOf: backupURL))
+                    recoveredMetadata = true
+                    return recovered
+                } catch {
+                    throw TrayPersistenceError.metadataCorrupt
+                }
+            }
             return .empty
         }
-        let data = try Data(contentsOf: url)
+        do {
+            return try decodeStore(Data(contentsOf: url))
+        } catch {
+            guard fileManager.fileExists(atPath: backupURL.path) else {
+                throw TrayPersistenceError.metadataCorrupt
+            }
+            do {
+                let recovered = try decodeStore(Data(contentsOf: backupURL))
+                recoveredMetadata = true
+                return recovered
+            } catch {
+                throw TrayPersistenceError.metadataCorrupt
+            }
+        }
+    }
+
+    private func decodeStore(_ data: Data) throws -> TrayStore {
         if let store = try? JSONDecoder().decode(TrayStore.self, from: data) {
             return store
         }
@@ -98,9 +176,16 @@ actor FileTrayRepository: TrayRepository {
         return try coordinateWriting { coordinatedURL in
             var store = try loadStore(at: coordinatedURL)
             let value = try operation(&store)
-            try JSONEncoder().encode(store).write(to: coordinatedURL, options: .atomic)
+            let data = try JSONEncoder().encode(store)
+            try metadataWriter.write(data, to: backupURL(for: coordinatedURL))
+            try metadataWriter.write(data, to: coordinatedURL)
+            try? assetStore.removeUnreferencedAssets(keeping: store.items.compactMap(\.asset))
             return value
         }
+    }
+
+    private func backupURL(for url: URL) -> URL {
+        url.appendingPathExtension("backup")
     }
 
     private func migrateLegacyFileIfNeeded() throws {
@@ -139,11 +224,28 @@ actor FileTrayRepository: TrayRepository {
         }
         return try operationResult.get()
     }
+
+    private static func actionableWriteError(_ error: Error) -> Error {
+        if let persistenceError = error as? TrayPersistenceError {
+            return persistenceError
+        }
+        if let cocoaError = error as? CocoaError,
+           cocoaError.code == .fileWriteOutOfSpace {
+            return TrayPersistenceError.insufficientStorage
+        }
+        if error is CocoaError {
+            return TrayPersistenceError.writeFailed
+        }
+        return error
+    }
 }
 
-enum TrayPersistenceError: Error, LocalizedError {
+enum TrayPersistenceError: Error, Equatable, LocalizedError {
     case appGroupUnavailable
     case coordinationFailed
+    case insufficientStorage
+    case metadataCorrupt
+    case writeFailed
 
     var errorDescription: String? {
         switch self {
@@ -151,6 +253,12 @@ enum TrayPersistenceError: Error, LocalizedError {
             "Pocket Tray's shared storage is unavailable."
         case .coordinationFailed:
             "Pocket Tray couldn't coordinate access to shared storage."
+        case .insufficientStorage:
+            "Pocket Tray couldn't save this object. Free up space on your iPhone, then try again."
+        case .metadataCorrupt:
+            "Pocket Tray's saved index is damaged and no usable backup is available. Your original files were not deleted."
+        case .writeFailed:
+            "Pocket Tray couldn't finish writing this object. Check available storage and try again; no partial capture was kept."
         }
     }
 }
@@ -165,6 +273,10 @@ actor UnavailableTrayRepository: TrayRepository {
     }
 
     func resource(for asset: TrayAsset) throws -> TrayAssetResource {
+        throw TrayPersistenceError.appGroupUnavailable
+    }
+
+    func storageReport(at date: Date) throws -> TrayStorageReport {
         throw TrayPersistenceError.appGroupUnavailable
     }
 }
