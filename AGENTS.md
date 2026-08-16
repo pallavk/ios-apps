@@ -1,5 +1,8 @@
 ## Agent skills
 
+Use only the user-level Matt Pocock engineering skills for planning, ideation,
+implementation, diagnosis, testing, review, and issue management in this repository.
+
 ### Issue tracker
 
 Issues and specs are tracked in GitHub Issues for `pallavk/ios-apps`. See `docs/agents/issue-tracker.md`.
