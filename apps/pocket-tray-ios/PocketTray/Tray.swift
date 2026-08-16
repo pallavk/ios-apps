@@ -2,12 +2,15 @@ import Foundation
 
 enum TrayError: Error, Equatable, LocalizedError {
     case emptyText
+    case itemNotFound
     case unsupportedContent
 
     var errorDescription: String? {
         switch self {
         case .emptyText:
             "The clipboard does not contain text to save."
+        case .itemNotFound:
+            "That Pocket Tray object is no longer available."
         case .unsupportedContent:
             "That clipboard content is not supported yet."
         }
@@ -25,17 +28,29 @@ enum TrayItemKind: String, Codable, Equatable, Sendable {
     case url
 }
 
+enum TrayItemState: String, Codable, Equatable, Sendable {
+    case recent
+    case trash
+}
+
+enum TrayRetention {
+    static let recent: TimeInterval = 7 * 24 * 60 * 60
+    static let trash: TimeInterval = 7 * 24 * 60 * 60
+}
+
 struct TrayItem: Codable, Equatable, Identifiable, Sendable {
-    let id: UUID
-    let kind: TrayItemKind
-    let text: String
-    let createdAt: Date
-    let capturedAt: Date
-    let isPinned: Bool
-    let title: String?
-    let note: String?
-    let collectionID: UUID?
-    let expiresAt: Date?
+    private(set) var id: UUID
+    private(set) var kind: TrayItemKind
+    private(set) var text: String
+    private(set) var createdAt: Date
+    private(set) var capturedAt: Date
+    private(set) var isPinned: Bool
+    private(set) var title: String?
+    private(set) var note: String?
+    private(set) var collectionID: UUID?
+    private(set) var expiresAt: Date?
+    private(set) var state: TrayItemState
+    private(set) var trashedAt: Date?
 
     init(
         id: UUID,
@@ -47,7 +62,9 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         title: String? = nil,
         note: String? = nil,
         collectionID: UUID? = nil,
-        expiresAt: Date? = nil
+        expiresAt: Date? = nil,
+        state: TrayItemState = .recent,
+        trashedAt: Date? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -59,6 +76,8 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         self.note = note
         self.collectionID = collectionID
         self.expiresAt = expiresAt
+        self.state = state
+        self.trashedAt = trashedAt
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -72,6 +91,8 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         case note
         case collectionID
         case expiresAt
+        case state
+        case trashedAt
     }
 
     init(from decoder: any Decoder) throws {
@@ -85,22 +106,52 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         title = try container.decodeIfPresent(String.self, forKey: .title)
         note = try container.decodeIfPresent(String.self, forKey: .note)
         collectionID = try container.decodeIfPresent(UUID.self, forKey: .collectionID)
-        expiresAt = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
+        state = try container.decodeIfPresent(TrayItemState.self, forKey: .state) ?? .recent
+        trashedAt = try container.decodeIfPresent(Date.self, forKey: .trashedAt)
+        let storedExpiry = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
+        if let storedExpiry {
+            expiresAt = storedExpiry
+        } else if !isPinned && state == .recent {
+            expiresAt = capturedAt.addingTimeInterval(TrayRetention.recent)
+        } else {
+            expiresAt = nil
+        }
     }
 
     func recaptured(with candidate: TrayItem) -> TrayItem {
-        TrayItem(
-            id: id,
-            kind: candidate.kind,
-            text: candidate.text,
-            createdAt: createdAt,
-            capturedAt: candidate.capturedAt,
-            isPinned: isPinned,
-            title: title,
-            note: note,
-            collectionID: collectionID,
-            expiresAt: isPinned ? nil : candidate.expiresAt
-        )
+        var updated = self
+        updated.kind = candidate.kind
+        updated.text = candidate.text
+        updated.capturedAt = candidate.capturedAt
+        updated.expiresAt = isPinned ? nil : candidate.expiresAt
+        updated.state = .recent
+        updated.trashedAt = nil
+        return updated
+    }
+
+    func settingPinned(_ isPinned: Bool, at date: Date) -> TrayItem {
+        var updated = self
+        updated.isPinned = isPinned
+        updated.expiresAt = isPinned ? nil : date.addingTimeInterval(TrayRetention.recent)
+        return updated
+    }
+
+    func movingToTrash(at date: Date) -> TrayItem {
+        var updated = self
+        updated.isPinned = false
+        updated.expiresAt = nil
+        updated.state = .trash
+        updated.trashedAt = date
+        return updated
+    }
+
+    func restoring(at date: Date) -> TrayItem {
+        var updated = self
+        updated.isPinned = false
+        updated.expiresAt = date.addingTimeInterval(TrayRetention.recent)
+        updated.state = .recent
+        updated.trashedAt = nil
+        return updated
     }
 
     var contentIdentity: String {
@@ -110,7 +161,11 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
 
 protocol TrayRepository: Sendable {
     func save(_ item: TrayItem) async throws -> TrayItem
-    func recent() async throws -> [TrayItem]
+    func setPinned(_ id: UUID, to isPinned: Bool, at date: Date) async throws -> TrayItem?
+    func moveToTrash(_ id: UUID, at date: Date) async throws -> TrayItem?
+    func restore(_ id: UUID, at date: Date) async throws -> TrayItem?
+    func deletePermanently(_ id: UUID) async throws -> Bool
+    func items(at date: Date) async throws -> [TrayItem]
 }
 
 protocol TextClipboard: Sendable {
@@ -159,7 +214,7 @@ struct Tray: Sendable {
             kind: kind,
             text: text,
             capturedAt: capturedAt,
-            expiresAt: capturedAt.addingTimeInterval(7 * 24 * 60 * 60)
+            expiresAt: capturedAt.addingTimeInterval(TrayRetention.recent)
         )
         return try await repository.save(item)
     }
@@ -177,12 +232,67 @@ struct Tray: Sendable {
     }
 
     func recent() async throws -> [TrayItem] {
-        try await repository.recent()
+        try await snapshot().recent
+    }
+
+    func trash() async throws -> [TrayItem] {
+        try await snapshot().trash
+    }
+
+    func pinned() async throws -> [TrayItem] {
+        try await snapshot().pinned
+    }
+
+    func snapshot() async throws -> TraySnapshot {
+        let items = try await repository.items(at: now())
+        let recent = items.filter { $0.state == .recent }.newestFirst()
+        return TraySnapshot(
+            recent: recent,
+            pinned: recent.filter(\.isPinned),
+            trash: items
+                .filter { $0.state == .trash }
+                .sorted { ($0.trashedAt ?? .distantPast) > ($1.trashedAt ?? .distantPast) }
+        )
+    }
+
+    func setPinned(_ id: UUID, to isPinned: Bool) async throws -> TrayItem {
+        guard let item = try await repository.setPinned(id, to: isPinned, at: now()) else {
+            throw TrayError.itemNotFound
+        }
+        return item
+    }
+
+    func moveToTrash(_ id: UUID) async throws -> TrayItem {
+        guard let item = try await repository.moveToTrash(id, at: now()) else {
+            throw TrayError.itemNotFound
+        }
+        return item
+    }
+
+    func restore(_ id: UUID) async throws -> TrayItem {
+        guard let item = try await repository.restore(id, at: now()) else {
+            throw TrayError.itemNotFound
+        }
+        return item
+    }
+
+    func deletePermanently(_ id: UUID) async throws {
+        guard try await repository.deletePermanently(id) else {
+            throw TrayError.itemNotFound
+        }
     }
 
     func reuse(_ item: TrayItem, using clipboard: any TextClipboard) async throws {
         try await clipboard.copy(item.text)
     }
+}
+
+struct TraySnapshot: Equatable, Sendable {
+    static let empty = TraySnapshot(recent: [], pinned: [], trash: [])
+
+    let recent: [TrayItem]
+    let pinned: [TrayItem]
+    let trash: [TrayItem]
 }
 
 extension Sequence where Element == TrayItem {
@@ -192,7 +302,21 @@ extension Sequence where Element == TrayItem {
 }
 
 extension Array where Element == TrayItem {
+    mutating func maintainLifecycle(at date: Date) {
+        for index in indices where self[index].state == .recent {
+            let item = self[index]
+            if !item.isPinned, let expiresAt = item.expiresAt, expiresAt <= date {
+                self[index] = item.movingToTrash(at: expiresAt)
+            }
+        }
+        removeAll { item in
+            guard item.state == .trash, let trashedAt = item.trashedAt else { return false }
+            return trashedAt.addingTimeInterval(TrayRetention.trash) <= date
+        }
+    }
+
     mutating func saveCapture(_ candidate: TrayItem) -> TrayItem {
+        maintainLifecycle(at: candidate.capturedAt)
         let matches = filter {
             $0.contentIdentity == candidate.contentIdentity
         }
@@ -208,6 +332,44 @@ extension Array where Element == TrayItem {
         append(updated)
         return updated
     }
+
+    mutating func setPinned(_ id: UUID, to isPinned: Bool, at date: Date) -> TrayItem? {
+        maintainLifecycle(at: date)
+        guard let index = firstIndex(where: { $0.id == id && $0.state == .recent }) else {
+            return nil
+        }
+        let updated = self[index].settingPinned(isPinned, at: date)
+        self[index] = updated
+        return updated
+    }
+
+    mutating func moveToTrash(_ id: UUID, at date: Date) -> TrayItem? {
+        maintainLifecycle(at: date)
+        guard let index = firstIndex(where: { $0.id == id && $0.state == .recent }) else {
+            return nil
+        }
+        let updated = self[index].movingToTrash(at: date)
+        self[index] = updated
+        return updated
+    }
+
+    mutating func restore(_ id: UUID, at date: Date) -> TrayItem? {
+        maintainLifecycle(at: date)
+        guard let index = firstIndex(where: { $0.id == id && $0.state == .trash }) else {
+            return nil
+        }
+        let updated = self[index].restoring(at: date)
+        self[index] = updated
+        return updated
+    }
+
+    mutating func deletePermanently(_ id: UUID) -> Bool {
+        guard let index = firstIndex(where: { $0.id == id && $0.state == .trash }) else {
+            return false
+        }
+        remove(at: index)
+        return true
+    }
 }
 
 actor InMemoryTrayRepository: TrayRepository {
@@ -221,7 +383,24 @@ actor InMemoryTrayRepository: TrayRepository {
         items.saveCapture(item)
     }
 
-    func recent() -> [TrayItem] {
-        items.newestFirst()
+    func setPinned(_ id: UUID, to isPinned: Bool, at date: Date) -> TrayItem? {
+        items.setPinned(id, to: isPinned, at: date)
+    }
+
+    func moveToTrash(_ id: UUID, at date: Date) -> TrayItem? {
+        items.moveToTrash(id, at: date)
+    }
+
+    func restore(_ id: UUID, at date: Date) -> TrayItem? {
+        items.restore(id, at: date)
+    }
+
+    func deletePermanently(_ id: UUID) -> Bool {
+        items.deletePermanently(id)
+    }
+
+    func items(at date: Date) -> [TrayItem] {
+        items.maintainLifecycle(at: date)
+        return items
     }
 }
