@@ -57,7 +57,7 @@ enum AppleAnalysisTranslator {
             components?.queryItems = [URLQueryItem(name: "q", value: value)]
             target = components?.url?.absoluteString
         case .date:
-            target = detected.date.map { "calshow:\(Int($0.timeIntervalSince1970))" }
+            target = detected.date.map { "calshow:\(Int($0.timeIntervalSinceReferenceDate))" }
         case .trackingNumber:
             if value.uppercased().hasPrefix("1Z") {
                 var components = URLComponents(string: "https://www.ups.com/track")

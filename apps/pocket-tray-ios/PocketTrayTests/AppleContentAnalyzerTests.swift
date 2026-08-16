@@ -43,7 +43,7 @@ final class AppleContentAnalyzerTests: XCTestCase {
         XCTAssertEqual(result.actions[0].target, "https://example.com")
         XCTAssertEqual(result.actions[1].target, "tel:+6561234567")
         XCTAssertTrue(try XCTUnwrap(result.actions[2].target).hasPrefix("http://maps.apple.com/"))
-        XCTAssertEqual(result.actions[3].target, "calshow:1800000000")
+        XCTAssertEqual(result.actions[3].target, "calshow:821692800")
         XCTAssertTrue(try XCTUnwrap(result.actions[4].target).contains("1Z999AA10123456784"))
     }
 
@@ -90,5 +90,8 @@ final class AppleContentAnalyzerTests: XCTestCase {
         )
 
         XCTAssertTrue(result.searchableText?.contains("Reference image") == true)
+        XCTAssertTrue(
+            result.searchableText?.localizedCaseInsensitiveContains("Pocket Tray") == true
+        )
     }
 }
