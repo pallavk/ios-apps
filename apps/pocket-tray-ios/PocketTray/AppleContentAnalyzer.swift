@@ -105,10 +105,11 @@ struct AppleContentAnalyzer: ContentAnalyzing {
     func analyze(_ input: ContentAnalysisInput) async throws -> ContentAnalysis {
         let recognizedText = try recognizedText(from: input.assetData)
         let combinedText = ([input.text] + recognizedText).joined(separator: "\n")
+        let languageCode = dominantLanguage(in: combinedText)
         let fixture = AppleAnalysisFixture(
             recognizedText: recognizedText,
-            languageCode: dominantLanguage(in: combinedText),
-            entities: namedEntities(in: combinedText),
+            languageCode: languageCode,
+            entities: namedEntities(in: combinedText, languageCode: languageCode),
             detectedValues: detectedValues(in: combinedText)
                 + trackingNumbers(in: combinedText)
         )
@@ -117,14 +118,20 @@ struct AppleContentAnalyzer: ContentAnalyzing {
 
     private func recognizedText(from data: Data?) throws -> [String] {
         guard let data else { return [] }
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
+        let request = Self.makeRecognitionRequest()
         let handler = VNImageRequestHandler(data: data)
         try handler.perform([request])
         return (request.results ?? []).compactMap {
             $0.topCandidates(1).first?.string
         }
+    }
+
+    static func makeRecognitionRequest() -> VNRecognizeTextRequest {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.automaticallyDetectsLanguage = true
+        return request
     }
 
     private func dominantLanguage(in text: String) -> String? {
@@ -133,10 +140,22 @@ struct AppleContentAnalyzer: ContentAnalyzing {
         return recognizer.dominantLanguage?.rawValue
     }
 
-    private func namedEntities(in text: String) -> [AppleEntityFixture] {
+    static func supportsNamedEntities(languageCode: String?) -> Bool {
+        guard let languageCode else { return false }
+        let language = NLLanguage(rawValue: languageCode)
+        return NLTagger.availableTagSchemes(for: .word, language: language).contains(.nameType)
+    }
+
+    private func namedEntities(
+        in text: String,
+        languageCode: String?
+    ) -> [AppleEntityFixture] {
+        guard Self.supportsNamedEntities(languageCode: languageCode) else { return [] }
+        let language = NLLanguage(rawValue: languageCode ?? "")
         let tagger = NLTagger(tagSchemes: [.nameType])
         tagger.string = text
         let range = text.startIndex..<text.endIndex
+        tagger.setLanguage(language, range: range)
         var entities: [AppleEntityFixture] = []
         tagger.enumerateTags(
             in: range,

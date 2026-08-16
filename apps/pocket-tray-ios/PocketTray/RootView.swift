@@ -365,7 +365,7 @@ struct RootView: View {
                 Menu {
                     ForEach(actions) { action in
                         Button { perform(action) } label: {
-                            Label(actionTitle(action), systemImage: actionSystemImage(action))
+                            Label(action.suggestedTitle, systemImage: actionSystemImage(action))
                         }
                     }
                 } label: {
@@ -520,16 +520,6 @@ struct RootView: View {
     private func copyActionValue(_ action: ContentAction) {
         perform("Copied \(actionCopyName(action))") {
             try await clipboard.copy(action.value)
-        }
-    }
-
-    private func actionTitle(_ action: ContentAction) -> String {
-        switch action.kind {
-        case .url: "Open Link"
-        case .phone: "Call \(action.value)"
-        case .address: "Open in Maps"
-        case .date: action.target == nil ? "Copy Date" : "Open Date"
-        case .trackingNumber: action.target == nil ? "Copy Tracking Number" : "Track Package"
         }
     }
 

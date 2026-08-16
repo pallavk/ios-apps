@@ -1,8 +1,30 @@
 import UIKit
+import NaturalLanguage
 import XCTest
 @testable import PocketTray
 
 final class AppleContentAnalyzerTests: XCTestCase {
+    func testVisionRequestAutomaticallyDetectsLanguage() {
+        let request = AppleContentAnalyzer.makeRecognitionRequest()
+
+        XCTAssertTrue(request.automaticallyDetectsLanguage)
+        XCTAssertTrue(request.usesLanguageCorrection)
+        XCTAssertEqual(request.recognitionLevel, .accurate)
+    }
+
+    func testRuntimeReportsOCRLanguagesAndEntityCapabilities() throws {
+        let request = AppleContentAnalyzer.makeRecognitionRequest()
+        let languages = try request.supportedRecognitionLanguages()
+        let englishSchemes = NLTagger.availableTagSchemes(for: .word, language: .english)
+
+        XCTAssertTrue(languages.allSatisfy { !$0.isEmpty })
+        XCTAssertEqual(
+            AppleContentAnalyzer.supportsNamedEntities(languageCode: "en"),
+            englishSchemes.contains(.nameType)
+        )
+        XCTAssertFalse(AppleContentAnalyzer.supportsNamedEntities(languageCode: nil))
+    }
+
     func testFixtureTranslationCoversOCRLanguageEntitiesAndActions() throws {
         let date = Date(timeIntervalSince1970: 1_800_000_000)
         let fixture = AppleAnalysisFixture(

@@ -2,6 +2,20 @@ import XCTest
 @testable import PocketTray
 
 final class ContentAnalysisTests: XCTestCase {
+    private actor ConcurrencyProbe {
+        private(set) var completed = 0
+        private(set) var maximumActive = 0
+        private var active = 0
+
+        func perform() async {
+            active += 1
+            maximumActive = max(maximumActive, active)
+            try? await Task.sleep(for: .milliseconds(30))
+            active -= 1
+            completed += 1
+        }
+    }
+
     private actor RetryAnalyzer: ContentAnalyzing {
         let result: ContentAnalysis
         private(set) var callCount = 0
@@ -157,6 +171,91 @@ final class ContentAnalysisTests: XCTestCase {
         XCTAssertEqual(snapshot.search("sourdough").map(\.id), [item.id])
         XCTAssertEqual(snapshot.search("tiong bahru").map(\.id), [item.id])
         XCTAssertEqual(snapshot.search("6123").map(\.id), [item.id])
+    }
+
+    func testAnalysisSchedulerBoundsConcurrentWorkAcrossItems() async {
+        let scheduler = ContentAnalysisScheduler(maxConcurrentOperations: 2)
+        let probe = ConcurrencyProbe()
+
+        for _ in 0..<6 {
+            await scheduler.schedule(itemID: UUID()) {
+                await probe.perform()
+            }
+        }
+        await scheduler.waitUntilIdle()
+
+        let completed = await probe.completed
+        let maximumActive = await probe.maximumActive
+        XCTAssertEqual(completed, 6)
+        XCTAssertEqual(maximumActive, 2)
+    }
+
+    func testSuggestedActionTitlesIdentifyEachRecognizedValue() {
+        let first = ContentAction(
+            kind: .url,
+            value: "https://first.example/path",
+            target: "https://first.example/path"
+        )
+        let second = ContentAction(
+            kind: .url,
+            value: "https://second.example/path",
+            target: "https://second.example/path"
+        )
+        let address = ContentAction(
+            kind: .address,
+            value: "1 Orchard Road",
+            target: "http://maps.apple.com/?q=1%20Orchard%20Road"
+        )
+
+        XCTAssertEqual(first.suggestedTitle, "Open first.example")
+        XCTAssertEqual(second.suggestedTitle, "Open second.example")
+        XCTAssertNotEqual(first.suggestedTitle, second.suggestedTitle)
+        XCTAssertEqual(address.suggestedTitle, "Open 1 Orchard Road in Maps")
+    }
+
+    func testSearchHandlesUnicodeScriptsDiacriticsAndCharacterWidths() {
+        let items = [
+            TrayItem(id: UUID(), text: "Crème brûlée", capturedAt: Date()),
+            TrayItem(id: UUID(), text: "مرحبا بالعالم", capturedAt: Date()),
+            TrayItem(id: UUID(), text: "Ｐｏｃｋｅｔ　Ｔｒａｙ 東京", capturedAt: Date()),
+            TrayItem(id: UUID(), text: "Cafe\u{301} משפחה 👨‍👩‍👧‍👦", capturedAt: Date())
+        ]
+        let snapshot = TraySnapshot(recent: items, pinned: [], trash: [], collections: [])
+
+        XCTAssertEqual(snapshot.search("creme brulee").map(\.id), [items[0].id])
+        XCTAssertEqual(snapshot.search("بالعالم").map(\.id), [items[1].id])
+        XCTAssertEqual(snapshot.search("Pocket Tray").map(\.id), [items[2].id])
+        XCTAssertEqual(snapshot.search("東京").map(\.id), [items[2].id])
+        XCTAssertEqual(snapshot.search("Café").map(\.id), [items[3].id])
+        XCTAssertEqual(snapshot.search("משפחה").map(\.id), [items[3].id])
+        XCTAssertEqual(snapshot.search("👨‍👩‍👧‍👦").map(\.id), [items[3].id])
+    }
+
+    func testFileRepositoryRoundTripsMultilingualContentAndMetadataExactly() async throws {
+        let root = try temporaryRoot()
+        let fileURL = root.appending(path: "unicode-tray.json")
+        let capturedAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let item = TrayItem(
+            id: UUID(),
+            text: "Cafe\u{301} — 東京 — مرحبا — 👨‍👩‍👧‍👦",
+            capturedAt: capturedAt,
+            title: "旅行メモ",
+            note: "משפחה १२३",
+            analysis: ContentAnalysis(
+                searchableText: "résumé 中文 العربية",
+                languageCode: "ar",
+                entities: [ContentEntity(kind: .place, value: "東京")],
+                actions: []
+            ),
+            expiresAt: capturedAt.addingTimeInterval(TrayRetention.recent)
+        )
+        let repository = FileTrayRepository(fileURL: fileURL)
+        _ = try await repository.apply(.capture(item, assetWrite: nil))
+
+        let relaunched = FileTrayRepository(fileURL: fileURL)
+        let stored = try await relaunched.store(at: item.capturedAt)
+
+        XCTAssertEqual(stored.items, [item])
     }
 
     private func waitUntil(

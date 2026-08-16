@@ -639,7 +639,7 @@ struct TraySnapshot: Equatable, Sendable {
     let collections: [TrayCollection]
 
     func search(_ query: String) -> [TrayItem] {
-        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedQuery = Self.searchKey(query)
         guard !normalizedQuery.isEmpty else { return recent }
         let collectionNames = Dictionary(
             uniqueKeysWithValues: collections.map { ($0.id, $0.name) }
@@ -655,12 +655,19 @@ struct TraySnapshot: Equatable, Sendable {
                 + (item.analysis?.entities.map(\.value) ?? [])
                 + (item.analysis?.actions.map(\.value) ?? [])
             return values.contains { value in
-                value.range(
-                    of: normalizedQuery,
-                    options: [.caseInsensitive, .diacriticInsensitive]
-                ) != nil
+                Self.searchKey(value).contains(normalizedQuery)
             }
         }
+    }
+
+    private static func searchKey(_ value: String) -> String {
+        value
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                locale: .current
+            )
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 }
 
