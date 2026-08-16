@@ -2,6 +2,11 @@ import XCTest
 @testable import PocketTray
 
 final class SensitiveContentTests: XCTestCase {
+    private struct ImmediateAnalyzer: ContentAnalyzing {
+        let result: ContentAnalysis
+        func analyze(_ input: ContentAnalysisInput) async throws -> ContentAnalysis { result }
+    }
+
     private struct TextShareProvider: ShareItemProviding {
         let text: String
         var canLoadURL: Bool { false }
@@ -76,5 +81,113 @@ final class SensitiveContentTests: XCTestCase {
 
         XCTAssertTrue(result.accepted.isEmpty)
         XCTAssertEqual(result.rejected, [.sensitive])
+    }
+
+    func testOCRDerivedSecretProtectsImageAfterDurableCapture() async throws {
+        let analyzer = ImmediateAnalyzer(
+            result: ContentAnalysis(
+                searchableText: "Payment card 4242 4242 4242 4242",
+                languageCode: "en",
+                entities: [],
+                actions: []
+            )
+        )
+        let tray = Tray(repository: InMemoryTrayRepository(), analyzer: analyzer)
+        let image = ImagePayload(
+            data: Data(base64Encoded:
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            )!,
+            typeIdentifier: "public.png",
+            filename: "receipt.png"
+        )
+
+        let captured = try await tray.capture(.image(image))
+        XCTAssertNil(captured.sensitivity)
+        try await waitUntil {
+            let recent = try await tray.recent()
+            return recent.first?.sensitivity?.reasons == [.paymentCard]
+        }
+        let recent = try await tray.recent()
+        let protected = try XCTUnwrap(recent.first)
+
+        XCTAssertEqual(protected.id, captured.id)
+        XCTAssertEqual(protected.asset, captured.asset)
+        XCTAssertEqual(protected.state, .recent)
+        XCTAssertTrue(protected.protectsSensitivePreview)
+    }
+
+    func testFalsePositiveOverridePersistsAndTextChangeReclassifies() async throws {
+        let root = try temporaryRoot()
+        let fileURL = root.appending(path: "tray.json")
+        let tray = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        let prepared = try tray.prepareCapture(.text("OTP: 739201"))
+        let saved = try await tray.commit(prepared, acknowledgingSensitiveContent: true)
+
+        let overridden = try await tray.setSensitivityOverridden(saved.id, to: true)
+        XCTAssertFalse(overridden.protectsSensitivePreview)
+        let relaunched = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        let relaunchedItems = try await relaunched.recent()
+        XCTAssertEqual(relaunchedItems.first?.sensitivity?.isOverridden, true)
+
+        let edited = try await relaunched.edit(
+            saved.id,
+            text: "Ordinary shopping note",
+            title: nil,
+            note: nil
+        )
+        XCTAssertNil(edited.sensitivity)
+        XCTAssertFalse(edited.protectsSensitivePreview)
+    }
+
+    func testEditingInASecretRequiresAcknowledgmentAndKeepsOriginalUntilConfirmed() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let original = try await tray.capture(.text("Ordinary note"))
+
+        do {
+            _ = try await tray.edit(
+                original.id,
+                text: "Verification code: 739201",
+                title: nil,
+                note: nil
+            )
+            XCTFail("Expected sensitive edit acknowledgment")
+        } catch {
+            XCTAssertEqual(
+                error as? TrayError,
+                .sensitiveContentRequiresAcknowledgment([.oneTimeCode])
+            )
+        }
+        let beforeAcknowledgment = try await tray.recent()
+        XCTAssertEqual(beforeAcknowledgment.first?.text, "Ordinary note")
+
+        let edited = try await tray.edit(
+            original.id,
+            text: "Verification code: 739201",
+            title: nil,
+            note: nil,
+            acknowledgingSensitiveContent: true
+        )
+        XCTAssertEqual(edited.sensitivity?.reasons, [.oneTimeCode])
+        XCTAssertTrue(edited.protectsSensitivePreview)
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        _ condition: @escaping () async throws -> Bool
+    ) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while clock.now < deadline {
+            if try await condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("Timed out waiting for sensitivity analysis")
+    }
+
+    private func temporaryRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return root
     }
 }

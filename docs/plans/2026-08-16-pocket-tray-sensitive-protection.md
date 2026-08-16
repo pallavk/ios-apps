@@ -1,6 +1,6 @@
 # Pocket Tray Sensitive Protection Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Implementation workflow:** Use Matt Pocock's TDD skill in vertical slices, then review through the agreed public seams.
 
 **Goal:** Add deterministic sensitive-object warnings, protected previews, override/reveal behavior, and optional system-auth app locking for issue #9.
 

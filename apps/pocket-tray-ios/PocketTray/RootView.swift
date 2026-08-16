@@ -60,6 +60,7 @@ struct RootView: View {
     @State private var pendingCollectionDeletion: TrayCollection?
     @State private var pendingPermanentDeletion: TrayItem?
     @State private var pendingSensitiveCapture: PreparedTrayCapture?
+    @State private var revealedSensitiveItemIDs: Set<UUID> = []
 
     init(tray: Tray, clipboard: any TextClipboard = SystemTextClipboard()) {
         self.tray = tray
@@ -78,6 +79,8 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task { await reload() }
+            } else {
+                revealedSensitiveItemIDs.removeAll()
             }
         }
         .sheet(item: $presentedSheet) { destination in
@@ -319,8 +322,29 @@ struct RootView: View {
 
     @ViewBuilder
     private func itemRow(_ item: TrayItem, section: Section) -> some View {
+        let isSensitiveHidden = item.protectsSensitivePreview
+            && !revealedSensitiveItemIDs.contains(item.id)
         HStack(spacing: 12) {
-            if item.kind == .image {
+            if isSensitiveHidden {
+                SensitiveTrayRow(item: item)
+                Menu {
+                    Button {
+                        revealedSensitiveItemIDs.insert(item.id)
+                    } label: {
+                        Label("Reveal", systemImage: "eye")
+                    }
+                    Button {
+                        overrideSensitivity(item)
+                    } label: {
+                        Label("Mark Not Sensitive", systemImage: "checkmark.shield")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .imageScale(.large)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Sensitive object options")
+            } else if item.kind == .image {
                 if section == .trash {
                     TrayImageRow(
                         item: item,
@@ -377,7 +401,23 @@ struct RootView: View {
                 }
             }
 
-            if section != .trash, let actions = item.analysis?.actions, !actions.isEmpty {
+            if item.protectsSensitivePreview, !isSensitiveHidden {
+                Button {
+                    revealedSensitiveItemIDs.remove(item.id)
+                } label: {
+                    Image(systemName: "eye.slash")
+                        .imageScale(.large)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Hide sensitive content")
+            }
+
+            if
+                !isSensitiveHidden,
+                section != .trash,
+                let actions = item.analysis?.actions,
+                !actions.isEmpty
+            {
                 Menu {
                     ForEach(actions) { action in
                         Button { perform(action) } label: {
@@ -530,6 +570,13 @@ struct RootView: View {
         }
     }
 
+    private func overrideSensitivity(_ item: TrayItem) {
+        revealedSensitiveItemIDs.remove(item.id)
+        perform("Marked as not sensitive") {
+            _ = try await tray.setSensitivityOverridden(item.id, to: true)
+        }
+    }
+
     private func perform(
         _ successMessage: String,
         operation: @escaping @Sendable () async throws -> Void
@@ -620,6 +667,41 @@ private struct SystemTextClipboard: TextClipboard {
     }
 }
 
+private struct SensitiveTrayRow: View {
+    let item: TrayItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "eye.slash.fill")
+                .foregroundStyle(.orange)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Sensitive content hidden")
+                    .font(.headline)
+                Text(reasonDescription)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text("Use the options button to reveal or correct this warning.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("sensitive-content-cover")
+    }
+
+    private var reasonDescription: String {
+        let labels = item.sensitivity?.reasons
+            .sorted { $0.rawValue < $1.rawValue }
+            .map(\.warningLabel) ?? []
+        guard !labels.isEmpty else { return "Pocket Tray found a possible secret." }
+        return "Possible \(labels.joined(separator: " or "))."
+    }
+}
+
 private struct TrayTextRow: View {
     let item: TrayItem
     let collectionName: String?
@@ -697,6 +779,7 @@ private struct ItemEditor: View {
     @State private var collectionID: UUID?
     @State private var errorMessage: String?
     @State private var isSaving = false
+    @State private var isConfirmingSensitiveEdit = false
 
     init(
         item: TrayItem,
@@ -755,6 +838,16 @@ private struct ItemEditor: View {
         } message: {
             Text(errorMessage ?? "Please try again.")
         }
+        .confirmationDialog(
+            "Save possible sensitive content?",
+            isPresented: $isConfirmingSensitiveEdit,
+            titleVisibility: .visible
+        ) {
+            Button("Save Anyway") { Task { await save(acknowledgingSensitiveContent: true) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Pocket Tray found a possible secret. Save it only if you intend to keep it here.")
+        }
     }
 
     private func blankAsNil(_ value: String) -> String? {
@@ -765,7 +858,7 @@ private struct ItemEditor: View {
         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
     }
 
-    private func save() async {
+    private func save(acknowledgingSensitiveContent: Bool = false) async {
         isSaving = true
         defer { isSaving = false }
         do {
@@ -774,10 +867,13 @@ private struct ItemEditor: View {
                 text: text,
                 title: blankAsNil(title),
                 note: blankAsNil(note),
-                collectionID: collectionID
+                collectionID: collectionID,
+                acknowledgingSensitiveContent: acknowledgingSensitiveContent
             )
             await onSaved()
             dismiss()
+        } catch TrayError.sensitiveContentRequiresAcknowledgment(_) {
+            isConfirmingSensitiveEdit = true
         } catch {
             errorMessage = error.localizedDescription
         }

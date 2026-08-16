@@ -631,7 +631,8 @@ struct Tray: Sendable {
         text: String,
         title: String?,
         note: String?,
-        collectionID: UUID? = nil
+        collectionID: UUID? = nil,
+        acknowledgingSensitiveContent: Bool = false
     ) async throws -> TrayItem {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TrayError.emptyText
@@ -644,6 +645,14 @@ struct Tray: Sendable {
             collectionID: collectionID,
             sensitivity: assessment(for: text)
         )
+        if
+            let sensitivity = edits.sensitivity,
+            !acknowledgingSensitiveContent
+        {
+            throw TrayError.sensitiveContentRequiresAcknowledgment(
+                sensitivity.reasons.sorted { $0.rawValue < $1.rawValue }
+            )
+        }
         guard let item = try await repository.apply(.edit(id, edits, now())).item else {
             throw TrayError.itemNotFound
         }
