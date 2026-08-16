@@ -54,6 +54,24 @@ final class TrayTests: XCTestCase {
         XCTAssertEqual(recent, [captured])
     }
 
+    func testPersistenceReadsFromDirectoryContainingSpaces() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+            .appending(path: "Application Support", directoryHint: .isDirectory)
+        let fileURL = directory.appending(path: "tray.json")
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: directory.deletingLastPathComponent())
+        }
+
+        let firstLaunch = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        let captured = try await firstLaunch.capture(.text("Path with a space"))
+
+        let secondLaunch = Tray(repository: FileTrayRepository(fileURL: fileURL))
+        let recent = try await secondLaunch.recent()
+
+        XCTAssertEqual(recent, [captured])
+    }
+
     func testRecentObjectsAreNewestFirst() async throws {
         let repository = InMemoryTrayRepository()
         let earlierTray = Tray(

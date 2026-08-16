@@ -39,7 +39,7 @@ actor FileTrayRepository: TrayRepository {
     }
 
     private func loadItems() throws -> [TrayItem] {
-        guard fileManager.fileExists(atPath: fileURL.path()) else {
+        guard fileManager.fileExists(atPath: fileURL.path) else {
             return []
         }
         return try JSONDecoder().decode([TrayItem].self, from: Data(contentsOf: fileURL))
