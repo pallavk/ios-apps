@@ -163,6 +163,7 @@ struct TrayPDFRow: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilitySummary)
         .task(id: item.asset?.digest) {
             do {
                 let loadedThumbnail = try await TrayPDFLoader.thumbnail(
@@ -189,6 +190,26 @@ struct TrayPDFRow: View {
         } else {
             Text(item.capturedAt, format: .relative(presentation: .named))
         }
+    }
+
+    private var accessibilitySummary: String {
+        var parts = ["PDF", item.title ?? item.text]
+        if let pageCount { parts.append("\(pageCount) \(pageCount == 1 ? "page" : "pages")") }
+        if let collectionName { parts.append("Collection \(collectionName)") }
+        if isUnavailable { parts.append("Original unavailable") }
+        parts.append(lifecycleAccessibilityDescription)
+        return parts.joined(separator: ". ")
+    }
+
+    private var lifecycleAccessibilityDescription: String {
+        if let trashedAt = item.trashedAt {
+            return "Deleted \(trashedAt.formatted(.relative(presentation: .named)))"
+        }
+        if item.isPinned { return "Pinned, does not expire" }
+        if let expiresAt = item.expiresAt {
+            return "Expires \(expiresAt.formatted(.relative(presentation: .named)))"
+        }
+        return "Saved \(item.capturedAt.formatted(.relative(presentation: .named)))"
     }
 }
 

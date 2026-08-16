@@ -2,8 +2,16 @@ import SwiftUI
 import UIKit
 
 struct RootView: View {
+    private struct Feedback: Identifiable {
+        let id = UUID()
+        let message: String
+        let collectionItem: TrayItem?
+    }
+
     private enum SheetDestination: Identifiable {
         case createCollection
+        case assignCollection(TrayItem)
+        case addItems(TrayCollection)
         case editItem(TrayItem)
         case previewImage(TrayItem)
         case previewPDF(TrayItem)
@@ -14,6 +22,8 @@ struct RootView: View {
         var id: String {
             switch self {
             case .createCollection: "create-collection"
+            case let .assignCollection(item): "assign-collection-\(item.id)"
+            case let .addItems(collection): "add-items-\(collection.id)"
             case let .editItem(item): "edit-item-\(item.id)"
             case let .previewImage(item): "preview-image-\(item.id)"
             case let .previewPDF(item): "preview-pdf-\(item.id)"
@@ -29,6 +39,9 @@ struct RootView: View {
         case pinned
         case collections
         case trash
+        case search
+
+        static let primaryCases: [Section] = [.recent, .pinned, .collections, .trash]
 
         var title: String {
             switch self {
@@ -36,6 +49,7 @@ struct RootView: View {
             case .pinned: "Pinned"
             case .collections: "Collections"
             case .trash: "Trash"
+            case .search: "Search"
             }
         }
 
@@ -45,6 +59,7 @@ struct RootView: View {
             case .pinned: "pin"
             case .collections: "folder"
             case .trash: "trash"
+            case .search: "magnifyingglass"
             }
         }
     }
@@ -60,7 +75,7 @@ struct RootView: View {
 
     @State private var selectedSection = Section.recent
     @State private var snapshot = TraySnapshot.empty
-    @State private var feedbackMessage: String?
+    @State private var feedback: Feedback?
     @State private var errorMessage: String?
     @State private var searchText = ""
     @State private var presentedSheet: SheetDestination?
@@ -71,6 +86,7 @@ struct RootView: View {
     @State private var hasSupportedClipboardContent = false
     @State private var storageWarningMessage: String?
     @State private var hasShownStorageWarning = false
+    @State private var isReadingClipboard = false
 
     init(
         tray: Tray,
@@ -87,11 +103,27 @@ struct RootView: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedSection) {
-            ForEach(Section.allCases, id: \.self) { section in
-                sectionNavigation(section, items: items(for: section))
-                    .tabItem { Label(section.title, systemImage: section.systemImage) }
-                    .tag(section)
+        Group {
+            if #available(iOS 26.0, *) {
+                TabView(selection: $selectedSection) {
+                    ForEach(Section.primaryCases, id: \.self) { section in
+                        Tab(section.title, systemImage: section.systemImage, value: section) {
+                            sectionNavigation(section, items: items(for: section))
+                        }
+                    }
+                    Tab(value: Section.search, role: .search) {
+                        sectionNavigation(.search, items: items(for: .search))
+                    }
+                }
+                .searchable(text: $searchText, prompt: "Search Pocket Tray")
+            } else {
+                TabView(selection: $selectedSection) {
+                    ForEach(Section.allCases, id: \.self) { section in
+                        sectionNavigation(section, items: items(for: section))
+                            .tabItem { Label(section.title, systemImage: section.systemImage) }
+                            .tag(section)
+                    }
+                }
             }
         }
         .task {
@@ -112,10 +144,52 @@ struct RootView: View {
                 sensitivePreviewSession.endForegroundSession()
             }
         }
+        .overlay(alignment: .top) {
+            if let feedback {
+                FeedbackToast(
+                    message: feedback.message,
+                    actionTitle: feedback.collectionItem == nil ? nil : "Add to Collection"
+                ) {
+                    if let item = feedback.collectionItem {
+                        presentedSheet = .assignCollection(item)
+                    }
+                    self.feedback = nil
+                }
+                .padding(.horizontal)
+                .safeAreaPadding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: feedback?.id)
+        .task(id: feedback?.id) {
+            guard let currentFeedback = feedback else { return }
+            let feedbackID = currentFeedback.id
+            let duration: Duration = currentFeedback.collectionItem == nil ? .seconds(2) : .seconds(5)
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled, feedback?.id == feedbackID else { return }
+            feedback = nil
+        }
         .sheet(item: $presentedSheet) { destination in
             switch destination {
             case .createCollection:
                 CollectionEditor(title: "New Collection", initialName: "", tray: tray) {
+                    await reload()
+                }
+            case let .assignCollection(item):
+                CollectionAssignmentView(
+                    item: item,
+                    collections: snapshot.collections,
+                    tray: tray
+                ) {
+                    await reload()
+                }
+            case let .addItems(collection):
+                CollectionItemPicker(
+                    collection: collection,
+                    items: snapshot.recent,
+                    collections: snapshot.collections,
+                    tray: tray
+                ) {
                     await reload()
                 }
             case let .editItem(item):
@@ -204,9 +278,13 @@ struct RootView: View {
     ) -> some View {
         NavigationStack {
             Group {
-                if section == .recent {
-                    sectionContent(section, items: items)
-                        .searchable(text: $searchText, prompt: "Search Pocket Tray")
+                if section == .search {
+                    if #available(iOS 26.0, *) {
+                        sectionContent(section, items: items)
+                    } else {
+                        sectionContent(section, items: items)
+                            .searchable(text: $searchText, prompt: "Search Pocket Tray")
+                    }
                 } else {
                     sectionContent(section, items: items)
                 }
@@ -216,13 +294,6 @@ struct RootView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { presentedSheet = .settings } label: {
                         Label("Settings", systemImage: "gearshape")
-                    }
-                }
-                if section == .recent {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        saveClipboardButton
-                            .labelStyle(.titleAndIcon)
-                            .accessibilityHint("Saves the current clipboard text to Pocket Tray")
                     }
                 }
                 if section == .collections {
@@ -240,18 +311,26 @@ struct RootView: View {
     private func sectionContent(_ section: Section, items: [TrayItem]) -> some View {
         if section == .recent, hasSupportedClipboardContent {
             VStack(spacing: 0) {
-                Label("Clipboard content is ready to save", systemImage: "clipboard")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("clipboard-available")
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        clipboardReadyLabel
+                        Spacer()
+                        clipboardSaveButton
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        clipboardReadyLabel
+                        clipboardSaveButton
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("clipboard-available")
                 recentContent(items)
             }
         } else if section == .collections {
             collectionsContent
-        } else if section == .recent && !searchText.isEmpty && items.isEmpty {
+        } else if section == .search && !searchText.isEmpty && items.isEmpty {
             ContentUnavailableView.search(text: searchText)
         } else if items.isEmpty {
             emptyState(for: section)
@@ -260,11 +339,29 @@ struct RootView: View {
         }
     }
 
+    private var clipboardReadyLabel: some View {
+        Label("Clipboard ready", systemImage: "clipboard")
+            .font(.subheadline.weight(.medium))
+    }
+
+    private var clipboardSaveButton: some View {
+        Button {
+            captureCurrentClipboard()
+        } label: {
+            if isReadingClipboard {
+                ProgressView().controlSize(.small)
+            } else {
+                Text("Save")
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(isReadingClipboard)
+        .accessibilityHint("Reads and saves the current clipboard content")
+    }
+
     @ViewBuilder
     private func recentContent(_ items: [TrayItem]) -> some View {
-        if !searchText.isEmpty && items.isEmpty {
-            ContentUnavailableView.search(text: searchText)
-        } else if items.isEmpty {
+        if items.isEmpty {
             emptyState(for: .recent)
         } else {
             itemList(items, section: .recent)
@@ -273,10 +370,11 @@ struct RootView: View {
 
     private func items(for section: Section) -> [TrayItem] {
         switch section {
-        case .recent: snapshot.search(searchText)
+        case .recent: snapshot.recent
         case .pinned: snapshot.pinned
         case .collections: []
         case .trash: snapshot.trash
+        case .search: snapshot.search(searchText)
         }
     }
 
@@ -287,9 +385,7 @@ struct RootView: View {
             ContentUnavailableView {
                 Label("Your tray is empty", systemImage: "tray")
             } description: {
-                Text("Paste copied text or share an image or PDF to keep it here.")
-            } actions: {
-                saveClipboardButton.buttonBorderShape(.capsule)
+                Text("Copy something in another app, or share text, an image, or a PDF to Pocket Tray.")
             }
         case .pinned:
             ContentUnavailableView(
@@ -305,14 +401,13 @@ struct RootView: View {
                 systemImage: "trash",
                 description: Text("Deleted and expired objects remain here for seven days.")
             )
+        case .search:
+            ContentUnavailableView(
+                "Nothing to search yet",
+                systemImage: "magnifyingglass",
+                description: Text("Saved objects will be searchable here.")
+            )
         }
-    }
-
-    private var saveClipboardButton: some View {
-        PasteButton(payloadType: String.self) { strings in
-            capture(strings.first)
-        }
-        .accessibilityLabel("Save clipboard text")
     }
 
     @ViewBuilder
@@ -338,13 +433,20 @@ struct RootView: View {
                                 ContentUnavailableView(
                                     "Collection is empty",
                                     systemImage: "folder",
-                                    description: Text("Edit an object to add it here.")
+                                    description: Text("Use Add Items to place existing objects here.")
                                 )
                             } else {
                                 itemList(collectionItems, section: .collections)
                             }
                         }
                         .navigationTitle(collection.name)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button { presentedSheet = .addItems(collection) } label: {
+                                    Label("Add Items", systemImage: "plus")
+                                }
+                            }
+                        }
                     } label: {
                         HStack {
                             Label(collection.name, systemImage: "folder")
@@ -371,13 +473,6 @@ struct RootView: View {
 
     private func itemList(_ items: [TrayItem], section: Section) -> some View {
         List {
-            if let feedbackMessage {
-                Label(feedbackMessage, systemImage: "checkmark.circle.fill")
-                    .font(.subheadline)
-                    .foregroundStyle(.green)
-                    .accessibilityIdentifier("action-feedback")
-            }
-
             ForEach(items) { item in
                 itemRow(item, section: section)
             }
@@ -391,23 +486,6 @@ struct RootView: View {
         HStack(spacing: 12) {
             if isSensitiveHidden {
                 SensitiveTrayRow(item: item)
-                Menu {
-                    Button {
-                        sensitivePreviewSession.reveal(item.id)
-                    } label: {
-                        Label("Reveal", systemImage: "eye")
-                    }
-                    Button {
-                        overrideSensitivity(item)
-                    } label: {
-                        Label("Mark Not Sensitive", systemImage: "checkmark.shield")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .imageScale(.large)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Sensitive object options")
             } else if item.kind == .image {
                 if section == .trash {
                     TrayImageRow(
@@ -456,13 +534,6 @@ struct RootView: View {
                     .contentShape(Rectangle())
                     .accessibilityHint("Copies this \(item.kind == .url ? "link" : "text")")
 
-                if item.kind == .url {
-                    Button { open(item) } label: {
-                        Image(systemName: "arrow.up.right.square").imageScale(.large)
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Open link")
-                }
             }
 
             if item.protectsSensitivePreview, !isSensitiveHidden {
@@ -476,26 +547,7 @@ struct RootView: View {
                 .accessibilityLabel("Hide sensitive content")
             }
 
-            if
-                !isSensitiveHidden,
-                section != .trash,
-                let actions = item.analysis?.actions,
-                !actions.isEmpty
-            {
-                Menu {
-                    ForEach(actions) { action in
-                        Button { perform(action) } label: {
-                            Label(action.suggestedTitle, systemImage: actionSystemImage(action))
-                        }
-                    }
-                } label: {
-                    Image(systemName: "sparkles")
-                        .imageScale(.large)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Suggested actions")
-                .accessibilityHint("Shows actions recognized in this object")
-            }
+            itemOptionsMenu(item, section: section, isSensitiveHidden: isSensitiveHidden)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if section != .trash {
@@ -526,6 +578,97 @@ struct RootView: View {
                 }
             }
         }
+    }
+
+    private func itemOptionsMenu(
+        _ item: TrayItem,
+        section: Section,
+        isSensitiveHidden: Bool
+    ) -> some View {
+        Menu {
+            if isSensitiveHidden {
+                Button {
+                    sensitivePreviewSession.reveal(item.id)
+                } label: {
+                    Label("Reveal", systemImage: "eye")
+                }
+                Button {
+                    overrideSensitivity(item)
+                } label: {
+                    Label("Mark Not Sensitive", systemImage: "checkmark.shield")
+                }
+            }
+            if section == .trash {
+                Button { restore(item) } label: {
+                    Label("Restore", systemImage: "arrow.uturn.backward")
+                }
+                Button(role: .destructive) { pendingPermanentDeletion = item } label: {
+                    Label("Delete Permanently", systemImage: "trash.slash")
+                }
+            } else {
+                if !isSensitiveHidden {
+                    switch item.kind {
+                    case .image:
+                        Button { presentedSheet = .previewImage(item) } label: {
+                            Label("Preview and Share", systemImage: "photo")
+                        }
+                    case .pdf:
+                        Button { presentedSheet = .previewPDF(item) } label: {
+                            Label("Preview and Share", systemImage: "doc.richtext")
+                        }
+                    case .text:
+                        Button { copy(item) } label: {
+                            Label("Copy Text", systemImage: "doc.on.doc")
+                        }
+                    case .url:
+                        Button { copy(item) } label: {
+                            Label("Copy Link", systemImage: "doc.on.doc")
+                        }
+                        Button { open(item) } label: {
+                            Label("Open Link", systemImage: "arrow.up.right.square")
+                        }
+                    }
+                    if let actions = item.analysis?.actions, !actions.isEmpty {
+                        SwiftUI.Section("Suggested Actions") {
+                            ForEach(actions) { action in
+                                Button { perform(action) } label: {
+                                    Label(
+                                        action.suggestedTitle,
+                                        systemImage: actionSystemImage(action)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Button { presentedSheet = .assignCollection(item) } label: {
+                    Label(
+                        item.collectionID == nil ? "Add to Collection" : "Move or Remove Collection",
+                        systemImage: "folder"
+                    )
+                }
+                if !isSensitiveHidden {
+                    Button { presentedSheet = .editItem(item) } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                }
+                Button { setPinned(item, to: !item.isPinned) } label: {
+                    Label(
+                        item.isPinned ? "Unpin" : "Pin",
+                        systemImage: item.isPinned ? "pin.slash" : "pin"
+                    )
+                }
+                Button(role: .destructive) { moveToTrash(item) } label: {
+                    Label("Move to Trash", systemImage: "trash")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .imageScale(.large)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Object options")
+        .accessibilityHint("Shows reuse, collection, edit, pin, and lifecycle actions")
     }
 
     private var isShowingError: Binding<Bool> {
@@ -594,11 +737,21 @@ struct RootView: View {
         _ prepared: PreparedTrayCapture,
         acknowledgingSensitiveContent: Bool = false
     ) {
-        perform("Saved to Pocket Tray") {
-            _ = try await tray.commit(
-                prepared,
-                acknowledgingSensitiveContent: acknowledgingSensitiveContent
-            )
+        Task {
+            do {
+                let saved = try await tray.commit(
+                    prepared,
+                    acknowledgingSensitiveContent: acknowledgingSensitiveContent
+                )
+                showFeedback(
+                    "Saved to Pocket Tray",
+                    collectionItem: snapshot.collections.isEmpty ? nil : saved
+                )
+                await reload()
+                await refreshStorageWarning()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -654,7 +807,7 @@ struct RootView: View {
         Task {
             do {
                 try await operation()
-                feedbackMessage = successMessage
+                showFeedback(successMessage)
                 await reload()
                 await refreshStorageWarning()
             } catch {
@@ -675,7 +828,7 @@ struct RootView: View {
         if let target = action.target, let url = URL(string: target) {
             openURL(url) { accepted in
                 if accepted {
-                    feedbackMessage = actionOpenedMessage(action)
+                    showFeedback(actionOpenedMessage(action))
                 } else {
                     copyActionValue(action)
                 }
@@ -758,11 +911,64 @@ struct RootView: View {
     }
 
     private func captureCurrentClipboard() {
+        guard !isReadingClipboard else { return }
+        isReadingClipboard = true
         Task {
             let content = await clipboardContentReader.readCurrentContent()
+            isReadingClipboard = false
             presentedSheet = nil
             capture(content)
         }
+    }
+
+    private func showFeedback(
+        _ message: String,
+        collectionItem: TrayItem? = nil
+    ) {
+        feedback = Feedback(message: message, collectionItem: collectionItem)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        UIAccessibility.post(notification: .announcement, argument: message)
+    }
+}
+
+private struct FeedbackToast: View {
+    let message: String
+    let actionTitle: String?
+    let action: () -> Void
+
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(
+                    .regular.interactive(actionTitle != nil),
+                    in: .rect(cornerRadius: 18)
+                )
+        } else {
+            content
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(.separator.opacity(0.3), lineWidth: 0.5)
+                }
+        }
+    }
+
+    private var content: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.subheadline.weight(.medium))
+            Spacer(minLength: 4)
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .font(.subheadline.weight(.semibold))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .accessibilityIdentifier("action-feedback")
     }
 }
 
@@ -816,6 +1022,9 @@ private struct SensitiveTrayRow: View {
         .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("sensitive-content-cover")
+        .accessibilityLabel(
+            "\(kindName) object. Sensitive content hidden. \(reasonDescription) Use Object options to reveal or correct this warning."
+        )
     }
 
     private var reasonDescription: String {
@@ -824,6 +1033,15 @@ private struct SensitiveTrayRow: View {
         } ?? []
         guard !labels.isEmpty else { return "Pocket Tray found a possible secret." }
         return "Possible \(labels.joined(separator: " or "))."
+    }
+
+    private var kindName: String {
+        switch item.kind {
+        case .image: "Image"
+        case .pdf: "PDF"
+        case .text: "Text"
+        case .url: "Link"
+        }
     }
 }
 
@@ -874,6 +1092,7 @@ private struct TrayTextRow: View {
         }
         .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilitySummary)
     }
 
     @ViewBuilder
@@ -887,6 +1106,22 @@ private struct TrayTextRow: View {
         } else {
             Text(item.capturedAt, format: .relative(presentation: .named))
         }
+    }
+
+    private var accessibilitySummary: String {
+        var parts = [item.kind == .url ? "Link" : "Text"]
+        if let title = item.title { parts.append(title) }
+        parts.append(item.text)
+        if let note = item.note { parts.append("Note \(note)") }
+        if let collectionName { parts.append("Collection \(collectionName)") }
+        if let trashedAt = item.trashedAt {
+            parts.append("Deleted \(trashedAt.formatted(.relative(presentation: .named)))")
+        } else if item.isPinned {
+            parts.append("Pinned, does not expire")
+        } else if let expiresAt = item.expiresAt {
+            parts.append("Expires \(expiresAt.formatted(.relative(presentation: .named)))")
+        }
+        return parts.joined(separator: ". ")
     }
 }
 
@@ -1001,6 +1236,228 @@ private struct ItemEditor: View {
             isConfirmingSensitiveEdit = true
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct CollectionAssignmentView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let item: TrayItem
+    let collections: [TrayCollection]
+    let tray: Tray
+    let onSaved: () async -> Void
+
+    @State private var collectionID: UUID?
+    @State private var errorMessage: String?
+    @State private var isSaving = false
+
+    init(
+        item: TrayItem,
+        collections: [TrayCollection],
+        tray: Tray,
+        onSaved: @escaping () async -> Void
+    ) {
+        self.item = item
+        self.collections = collections
+        self.tray = tray
+        self.onSaved = onSaved
+        _collectionID = State(initialValue: item.collectionID)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Object") {
+                    Text(item.title ?? item.text)
+                        .lineLimit(3)
+                }
+                Section("Collection") {
+                    Picker("Collection", selection: $collectionID) {
+                        Text("None").tag(UUID?.none)
+                        ForEach(collections) { collection in
+                            Text(collection.name).tag(Optional(collection.id))
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    if collections.isEmpty {
+                        Text("Create a collection from the Collections tab, then return here to assign this object.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle(item.collectionID == nil ? "Add to Collection" : "Move Collection")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Saving…" : "Save") { Task { await save() } }
+                        .disabled(isSaving || collectionID == item.collectionID)
+                }
+            }
+        }
+        .alert("Couldn't update the collection", isPresented: isShowingError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "Please try again.")
+        }
+    }
+
+    private var isShowingError: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private func save() async {
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            _ = try await tray.assign(item.id, to: collectionID)
+            await onSaved()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct CollectionItemPicker: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let collection: TrayCollection
+    let items: [TrayItem]
+    let collections: [TrayCollection]
+    let tray: Tray
+    let onChanged: () async -> Void
+
+    @State private var selectedIDs: Set<UUID>
+    @State private var updatingIDs: Set<UUID> = []
+    @State private var errorMessage: String?
+
+    init(
+        collection: TrayCollection,
+        items: [TrayItem],
+        collections: [TrayCollection],
+        tray: Tray,
+        onChanged: @escaping () async -> Void
+    ) {
+        self.collection = collection
+        self.items = items
+        self.collections = collections
+        self.tray = tray
+        self.onChanged = onChanged
+        _selectedIDs = State(
+            initialValue: Set(items.filter { $0.collectionID == collection.id }.map(\.id))
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if items.isEmpty {
+                    ContentUnavailableView(
+                        "No objects available",
+                        systemImage: "tray",
+                        description: Text("Save an object before adding it to this collection.")
+                    )
+                } else {
+                    List(items) { item in
+                        Button { toggle(item) } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: item.kind.systemImage)
+                                    .foregroundStyle(.tint)
+                                    .frame(width: 24)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(item.title ?? item.text)
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(2)
+                                    if
+                                        item.collectionID != nil,
+                                        item.collectionID != collection.id,
+                                        let currentName = collectionName(for: item)
+                                    {
+                                        Text("Currently in \(currentName)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if updatingIDs.contains(item.id) {
+                                    ProgressView().controlSize(.small)
+                                } else if selectedIDs.contains(item.id) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.tint)
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(updatingIDs.contains(item.id))
+                        .accessibilityLabel(item.title ?? item.text)
+                        .accessibilityValue(selectedIDs.contains(item.id) ? "In collection" : "Not in collection")
+                        .accessibilityHint(
+                            selectedIDs.contains(item.id)
+                                ? "Removes this object from the collection"
+                                : "Adds this object to the collection"
+                        )
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .navigationTitle("Add Items")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .alert("Couldn't update that object", isPresented: isShowingError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "Please try again.")
+        }
+    }
+
+    private var isShowingError: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private func collectionName(for item: TrayItem) -> String? {
+        collections.first { $0.id == item.collectionID }?.name
+    }
+
+    private func toggle(_ item: TrayItem) {
+        let shouldAdd = !selectedIDs.contains(item.id)
+        updatingIDs.insert(item.id)
+        Task {
+            defer { updatingIDs.remove(item.id) }
+            do {
+                _ = try await tray.assign(item.id, to: shouldAdd ? collection.id : nil)
+                if shouldAdd {
+                    selectedIDs.insert(item.id)
+                } else {
+                    selectedIDs.remove(item.id)
+                }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                await onChanged()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+private extension TrayItemKind {
+    var systemImage: String {
+        switch self {
+        case .image: "photo"
+        case .pdf: "doc.richtext"
+        case .text: "text.alignleft"
+        case .url: "link"
         }
     }
 }
