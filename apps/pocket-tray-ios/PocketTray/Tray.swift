@@ -459,10 +459,12 @@ struct Tray: Sendable {
         try await snapshot().pinned
     }
 
-    func snapshot() async throws -> TraySnapshot {
+    func snapshot(rescheduleMissingAnalysis: Bool = true) async throws -> TraySnapshot {
         let store = try await repository.store(at: now())
-        for item in store.items where item.analysis == nil {
-            await scheduleAnalysis(for: item)
+        if rescheduleMissingAnalysis {
+            for item in store.items where item.analysis == nil {
+                await scheduleAnalysis(for: item)
+            }
         }
         let recent = store.items.filter { $0.state == .recent }.newestFirst()
         return TraySnapshot(
@@ -475,6 +477,10 @@ struct Tray: Sendable {
                 $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
         )
+    }
+
+    func waitForScheduledAnalysis() async {
+        await analysisScheduler.waitUntilIdle()
     }
 
     func createCollection(named name: String) async throws -> TrayCollection {
@@ -643,8 +649,11 @@ struct TraySnapshot: Equatable, Sendable {
                 item.text,
                 item.title,
                 item.note,
-                item.collectionID.flatMap { collectionNames[$0] }
+                item.collectionID.flatMap { collectionNames[$0] },
+                item.analysis?.searchableText
             ].compactMap { $0 }
+                + (item.analysis?.entities.map(\.value) ?? [])
+                + (item.analysis?.actions.map(\.value) ?? [])
             return values.contains { value in
                 value.range(
                     of: normalizedQuery,

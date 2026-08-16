@@ -102,6 +102,32 @@ final class ContentAnalysisTests: XCTestCase {
         XCTAssertEqual(recent.first?.analysis, fixture)
     }
 
+    func testSearchIndexesOCRTextEntitiesAndContextualActionValues() {
+        let item = TrayItem(
+            id: UUID(),
+            kind: .image,
+            text: "IMG_0042.PNG",
+            capturedAt: Date(),
+            analysis: ContentAnalysis(
+                searchableText: "Handwritten sourdough recipe",
+                languageCode: "en",
+                entities: [ContentEntity(kind: .place, value: "Tiong Bahru")],
+                actions: [
+                    ContentAction(
+                        kind: .phone,
+                        value: "+65 6123 4567",
+                        target: "tel:+6561234567"
+                    )
+                ]
+            )
+        )
+        let snapshot = TraySnapshot(recent: [item], pinned: [], trash: [], collections: [])
+
+        XCTAssertEqual(snapshot.search("sourdough").map(\.id), [item.id])
+        XCTAssertEqual(snapshot.search("tiong bahru").map(\.id), [item.id])
+        XCTAssertEqual(snapshot.search("6123").map(\.id), [item.id])
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(2),
         _ condition: @escaping () async throws -> Bool

@@ -19,10 +19,12 @@ enum ContentActionKind: String, Codable, Equatable, Sendable {
     case url
 }
 
-struct ContentAction: Codable, Equatable, Sendable {
+struct ContentAction: Codable, Equatable, Identifiable, Sendable {
     let kind: ContentActionKind
     let value: String
     let target: String?
+
+    var id: String { "\(kind.rawValue)\u{0}\(value)" }
 }
 
 struct ContentAnalysis: Codable, Equatable, Sendable {
@@ -54,6 +56,7 @@ struct UnavailableContentAnalyzer: ContentAnalyzing {
 actor ContentAnalysisScheduler {
     private var inFlight: Set<UUID> = []
     private var pending: [UUID: @Sendable () async -> Void] = [:]
+    private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
     func schedule(
         itemID: UUID,
@@ -82,5 +85,17 @@ actor ContentAnalysisScheduler {
             return
         }
         inFlight.remove(itemID)
+        if inFlight.isEmpty {
+            let waiters = idleWaiters
+            idleWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+        }
+    }
+
+    func waitUntilIdle() async {
+        guard !inFlight.isEmpty else { return }
+        await withCheckedContinuation { continuation in
+            idleWaiters.append(continuation)
+        }
     }
 }

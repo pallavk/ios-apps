@@ -360,6 +360,22 @@ struct RootView: View {
                     .accessibilityLabel("Open link")
                 }
             }
+
+            if section != .trash, let actions = item.analysis?.actions, !actions.isEmpty {
+                Menu {
+                    ForEach(actions) { action in
+                        Button { perform(action) } label: {
+                            Label(actionTitle(action), systemImage: actionSystemImage(action))
+                        }
+                    }
+                } label: {
+                    Image(systemName: "sparkles")
+                        .imageScale(.large)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Suggested actions")
+                .accessibilityHint("Shows actions recognized in this object")
+            }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if section != .trash {
@@ -487,9 +503,62 @@ struct RootView: View {
         openURL(url)
     }
 
+    private func perform(_ action: ContentAction) {
+        if let target = action.target, let url = URL(string: target) {
+            openURL(url)
+            feedbackMessage = actionOpenedMessage(action)
+        } else {
+            perform("Copied \(actionCopyName(action))") {
+                try await clipboard.copy(action.value)
+            }
+        }
+    }
+
+    private func actionTitle(_ action: ContentAction) -> String {
+        switch action.kind {
+        case .url: "Open Link"
+        case .phone: "Call \(action.value)"
+        case .address: "Open in Maps"
+        case .date: action.target == nil ? "Copy Date" : "Open Date"
+        case .trackingNumber: action.target == nil ? "Copy Tracking Number" : "Track Package"
+        }
+    }
+
+    private func actionSystemImage(_ action: ContentAction) -> String {
+        switch action.kind {
+        case .url: "arrow.up.right.square"
+        case .phone: "phone"
+        case .address: "map"
+        case .date: "calendar"
+        case .trackingNumber: "shippingbox"
+        }
+    }
+
+    private func actionOpenedMessage(_ action: ContentAction) -> String {
+        switch action.kind {
+        case .url: "Opened link"
+        case .phone: "Opened Phone"
+        case .address: "Opened Maps"
+        case .date: "Opened Calendar"
+        case .trackingNumber: "Opened tracking"
+        }
+    }
+
+    private func actionCopyName(_ action: ContentAction) -> String {
+        switch action.kind {
+        case .url: "link"
+        case .phone: "phone number"
+        case .address: "address"
+        case .date: "date"
+        case .trackingNumber: "tracking number"
+        }
+    }
+
     private func reload() async {
         do {
             snapshot = try await tray.snapshot()
+            await tray.waitForScheduledAnalysis()
+            snapshot = try await tray.snapshot(rescheduleMissingAnalysis: false)
         } catch {
             errorMessage = error.localizedDescription
         }
