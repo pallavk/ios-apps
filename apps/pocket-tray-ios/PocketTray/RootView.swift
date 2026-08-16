@@ -6,6 +6,7 @@ struct RootView: View {
         case createCollection
         case editItem(TrayItem)
         case previewImage(TrayItem)
+        case previewPDF(TrayItem)
         case renameCollection(TrayCollection)
 
         var id: String {
@@ -13,6 +14,7 @@ struct RootView: View {
             case .createCollection: "create-collection"
             case let .editItem(item): "edit-item-\(item.id)"
             case let .previewImage(item): "preview-image-\(item.id)"
+            case let .previewPDF(item): "preview-pdf-\(item.id)"
             case let .renameCollection(collection): "rename-collection-\(collection.id)"
             }
         }
@@ -89,6 +91,8 @@ struct RootView: View {
                 }
             case let .previewImage(item):
                 TrayImageDetailView(item: item, tray: tray)
+            case let .previewPDF(item):
+                TrayPDFDetailView(item: item, tray: tray)
             case let .renameCollection(collection):
                 CollectionEditor(
                     title: "Rename Collection",
@@ -199,7 +203,7 @@ struct RootView: View {
             ContentUnavailableView {
                 Label("Your tray is empty", systemImage: "tray")
             } description: {
-                Text("Paste copied text or share an image to keep it here.")
+                Text("Paste copied text or share an image or PDF to keep it here.")
             } actions: {
                 saveClipboardButton.buttonBorderShape(.capsule)
             }
@@ -318,6 +322,25 @@ struct RootView: View {
                     .buttonStyle(.plain)
                     .contentShape(Rectangle())
                     .accessibilityHint("Opens image preview and sharing")
+                }
+            } else if item.kind == .pdf {
+                if section == .trash {
+                    TrayPDFRow(
+                        item: item,
+                        collectionName: collectionName(for: item),
+                        tray: tray
+                    )
+                } else {
+                    Button { presentedSheet = .previewPDF(item) } label: {
+                        TrayPDFRow(
+                            item: item,
+                            collectionName: collectionName(for: item),
+                            tray: tray
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .accessibilityHint("Opens PDF preview and sharing")
                 }
             } else if section == .trash {
                 TrayTextRow(item: item, collectionName: collectionName(for: item))

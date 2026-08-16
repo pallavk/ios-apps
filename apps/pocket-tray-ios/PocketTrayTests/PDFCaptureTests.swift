@@ -274,6 +274,26 @@ final class PDFCaptureTests: XCTestCase {
         XCTAssertEqual(filePayload.data, pdf)
     }
 
+    func testPDFThumbnailIsBoundedAndOriginalRemainsExportable() async throws {
+        let pdf = onePagePDF
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let item = try await tray.capture(
+            .pdf(PDFPayload(data: pdf, typeIdentifier: UTType.pdf.identifier, filename: "preview.pdf"))
+        )
+
+        let thumbnail = try await TrayPDFLoader.thumbnail(
+            for: item,
+            tray: tray,
+            size: CGSize(width: 80, height: 100)
+        )
+        let loaded = try await TrayPDFLoader.load(for: item, tray: tray)
+
+        XCTAssertLessThanOrEqual(thumbnail.size.width, 80)
+        XCTAssertLessThanOrEqual(thumbnail.size.height, 100)
+        XCTAssertEqual(loaded.document.pageCount, 1)
+        XCTAssertEqual(try Data(contentsOf: loaded.exportURL), pdf)
+    }
+
     private func temporaryRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
