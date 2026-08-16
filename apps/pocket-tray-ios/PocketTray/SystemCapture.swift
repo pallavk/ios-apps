@@ -9,14 +9,7 @@ protocol ClipboardContentReading: Sendable {
 struct SystemClipboardContentReader: ClipboardContentReading {
     func readCurrentContent() async -> CaptureContent {
         await MainActor.run {
-            let pasteboard = UIPasteboard.general
-            if pasteboard.hasURLs, let url = pasteboard.url {
-                return .url(url)
-            }
-            if pasteboard.hasStrings, let text = pasteboard.string {
-                return .text(text)
-            }
-            return .unsupported
+            SystemClipboardSupport.read(from: .general)
         }
     }
 }
@@ -28,9 +21,37 @@ protocol ClipboardAvailabilityChecking: Sendable {
 struct SystemClipboardAvailabilityChecker: ClipboardAvailabilityChecking {
     func hasSupportedContent() async -> Bool {
         await MainActor.run {
-            let pasteboard = UIPasteboard.general
-            return pasteboard.hasStrings || pasteboard.hasURLs
+            SystemClipboardSupport.isAvailable(in: .general)
         }
+    }
+}
+
+@MainActor
+private enum SystemClipboardSupport {
+    private enum Kind {
+        case text
+        case url
+    }
+
+    static func isAvailable(in pasteboard: UIPasteboard) -> Bool {
+        supportedKind(in: pasteboard) != nil
+    }
+
+    static func read(from pasteboard: UIPasteboard) -> CaptureContent {
+        switch supportedKind(in: pasteboard) {
+        case .url:
+            pasteboard.url.map(CaptureContent.url) ?? .unsupported
+        case .text:
+            pasteboard.string.map(CaptureContent.text) ?? .unsupported
+        case nil:
+            .unsupported
+        }
+    }
+
+    private static func supportedKind(in pasteboard: UIPasteboard) -> Kind? {
+        if pasteboard.hasURLs { return .url }
+        if pasteboard.hasStrings { return .text }
+        return nil
     }
 }
 
