@@ -275,15 +275,15 @@ enum TrayPersistenceError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .appGroupUnavailable:
-            "Pocket Tray's shared storage is unavailable."
+            String(localized: "Pocket Tray's shared storage is unavailable.")
         case .coordinationFailed:
-            "Pocket Tray couldn't coordinate access to shared storage."
+            String(localized: "Pocket Tray couldn't coordinate access to shared storage.")
         case .insufficientStorage:
-            "Pocket Tray couldn't save this object. Free up space on your iPhone, then try again."
+            String(localized: "Pocket Tray couldn't save this object. Free up space on your iPhone, then try again.")
         case .metadataCorrupt:
-            "Pocket Tray's saved index is damaged and no usable backup is available. Your original files were not deleted."
+            String(localized: "Pocket Tray's saved index is damaged and no usable backup is available. Your original files were not deleted.")
         case .writeFailed:
-            "Pocket Tray couldn't finish writing this object. Check available storage and try again; no partial capture was kept."
+            String(localized: "Pocket Tray couldn't finish writing this object. Check available storage and try again; no partial capture was kept.")
         }
     }
 }

@@ -1,0 +1,18 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Capture Clipboard" : {
+
+    },
+    "Open Pocket Tray to Save Clipboard" : {
+
+    },
+    "Open Pocket Tray's private clipboard capture prompt." : {
+
+    },
+    "Open Pocket Tray, where you can review and save the current clipboard." : {
+
+    }
+  },
+  "version" : "1.0"
+}

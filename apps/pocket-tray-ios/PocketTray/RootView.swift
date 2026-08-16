@@ -46,11 +46,11 @@ struct RootView: View {
 
         var title: String {
             switch self {
-            case .recent: "Recent"
-            case .pinned: "Pinned"
-            case .collections: "Collections"
-            case .trash: "Trash"
-            case .search: "Search"
+            case .recent: String(localized: "Recent")
+            case .pinned: String(localized: "Pinned")
+            case .collections: String(localized: "Collections")
+            case .trash: String(localized: "Trash")
+            case .search: String(localized: "Search")
             }
         }
 
@@ -175,7 +175,9 @@ struct RootView: View {
             if let feedback {
                 FeedbackToast(
                     message: feedback.message,
-                    actionTitle: feedback.collectionItem == nil ? nil : "Add to Collection"
+                    actionTitle: feedback.collectionItem == nil
+                        ? nil
+                        : String(localized: "Add to Collection")
                 ) {
                     if let item = feedback.collectionItem {
                         presentedSheet = .assignCollection(item)
@@ -199,7 +201,11 @@ struct RootView: View {
         .sheet(item: $presentedSheet) { destination in
             switch destination {
             case .createCollection:
-                CollectionEditor(title: "New Collection", initialName: "", tray: tray) {
+                CollectionEditor(
+                    title: String(localized: "New Collection"),
+                    initialName: "",
+                    tray: tray
+                ) {
                     await reload()
                 }
             case let .assignCollection(item):
@@ -236,7 +242,7 @@ struct RootView: View {
                 TrayPDFDetailView(item: item, tray: tray)
             case let .renameCollection(collection):
                 CollectionEditor(
-                    title: "Rename Collection",
+                    title: String(localized: "Rename Collection"),
                     initialName: collection.name,
                     tray: tray,
                     collectionID: collection.id
@@ -598,10 +604,10 @@ struct RootView: View {
 
     private var sensitiveCaptureWarning: String {
         guard let reasons = pendingSensitiveCapture?.item.sensitivity?.reasons else {
-            return "Pocket Tray found a possible secret."
+            return String(localized: "Pocket Tray found a possible secret.")
         }
         let labels = SensitiveContentReason.ordered(reasons).map(\.warningLabel)
-        return "Pocket Tray found a possible \(labels.joined(separator: " or ")). Save it only if you intend to keep it here."
+        return String(localized: "Pocket Tray found possible sensitive content: \(labels.joined(separator: ", ")). Save it only if you intend to keep it here.")
     }
 
     private var isConfirmingCollectionDeletion: Binding<Bool> {
@@ -644,7 +650,7 @@ struct RootView: View {
                     acknowledgingSensitiveContent: acknowledgingSensitiveContent
                 )
                 showFeedback(
-                    "Saved to Pocket Tray",
+                    String(localized: "Saved to Pocket Tray"),
                     collectionItem: snapshot.collections.isEmpty ? nil : saved
                 )
                 if pendingClipboardSaveChangeCount != nil {
@@ -662,46 +668,46 @@ struct RootView: View {
     }
 
     private func copy(_ item: TrayItem) {
-        perform("Copied to clipboard") {
+        perform(String(localized: "Copied to clipboard")) {
             try await tray.reuse(item, using: clipboard)
         }
     }
 
     private func setPinned(_ item: TrayItem, to isPinned: Bool) {
-        perform(isPinned ? "Pinned" : "Unpinned") {
+        perform(isPinned ? String(localized: "Pinned") : String(localized: "Unpinned")) {
             _ = try await tray.setPinned(item.id, to: isPinned)
         }
     }
 
     private func moveToTrash(_ item: TrayItem) {
-        perform("Moved to Trash") {
+        perform(String(localized: "Moved to Trash")) {
             _ = try await tray.moveToTrash(item.id)
         }
     }
 
     private func restore(_ item: TrayItem) {
-        perform("Restored to Recent") {
+        perform(String(localized: "Restored to Recent")) {
             _ = try await tray.restore(item.id)
         }
     }
 
     private func deletePermanently(_ item: TrayItem) {
         pendingPermanentDeletion = nil
-        perform("Deleted permanently") {
+        perform(String(localized: "Deleted permanently")) {
             try await tray.deletePermanently(item.id)
         }
     }
 
     private func deleteCollection(_ collection: TrayCollection) {
         pendingCollectionDeletion = nil
-        perform("Collection deleted") {
+        perform(String(localized: "Collection deleted")) {
             try await tray.deleteCollection(collection.id)
         }
     }
 
     private func overrideSensitivity(_ item: TrayItem) {
         sensitivePreviewSession.hide(item.id)
-        perform("Marked as not sensitive") {
+        perform(String(localized: "Marked as not sensitive")) {
             _ = try await tray.setSensitivityOverridden(item.id, to: true)
         }
     }
@@ -724,7 +730,7 @@ struct RootView: View {
 
     private func open(_ item: TrayItem) {
         guard let url = URL(string: item.text) else {
-            errorMessage = "Pocket Tray couldn't open that link."
+            errorMessage = String(localized: "Pocket Tray couldn't open that link.")
             return
         }
         openURL(url)
@@ -745,28 +751,28 @@ struct RootView: View {
     }
 
     private func copyActionValue(_ action: ContentAction) {
-        perform("Copied \(actionCopyName(action))") {
+        perform(String(localized: "Copied \(actionCopyName(action))")) {
             try await clipboard.copy(action.value)
         }
     }
 
     private func actionOpenedMessage(_ action: ContentAction) -> String {
         switch action.kind {
-        case .url: "Opened link"
-        case .phone: "Opened Phone"
-        case .address: "Opened Maps"
-        case .date: "Opened Calendar"
-        case .trackingNumber: "Opened tracking"
+        case .url: String(localized: "Opened link")
+        case .phone: String(localized: "Opened Phone")
+        case .address: String(localized: "Opened Maps")
+        case .date: String(localized: "Opened Calendar")
+        case .trackingNumber: String(localized: "Opened tracking")
         }
     }
 
     private func actionCopyName(_ action: ContentAction) -> String {
         switch action.kind {
-        case .url: "link"
-        case .phone: "phone number"
-        case .address: "address"
-        case .date: "date"
-        case .trackingNumber: "tracking number"
+        case .url: String(localized: "link")
+        case .phone: String(localized: "phone number")
+        case .address: String(localized: "address")
+        case .date: String(localized: "date")
+        case .trackingNumber: String(localized: "tracking number")
         }
     }
 
@@ -797,7 +803,7 @@ struct RootView: View {
             return
         }
         hasShownStorageWarning = true
-        storageWarningMessage = "Pocket Tray is using \(ByteCountFormatter.string(fromByteCount: report.totalBytes, countStyle: .file)). Nothing was deleted or compressed. Review usage in Settings."
+        storageWarningMessage = String(localized: "Pocket Tray is using \(ByteCountFormatter.string(fromByteCount: report.totalBytes, countStyle: .file)). Nothing was deleted or compressed. Review usage in Settings.")
     }
 
     private func presentControlCaptureIfRequested() {
@@ -848,7 +854,7 @@ struct RootView: View {
 
     private func requestCameraCapture() {
         guard CameraAccess.isAvailable else {
-            errorMessage = "A camera isn't available on this device."
+            errorMessage = String(localized: "A camera isn't available on this device.")
             return
         }
         Task {
@@ -877,7 +883,7 @@ struct RootView: View {
     private func directCaptureDidSave(_ item: TrayItem) async {
         clipboardPromptState.dismissCurrentPrompt()
         showFeedback(
-            "Saved to Pocket Tray",
+            String(localized: "Saved to Pocket Tray"),
             collectionItem: !snapshot.collections.isEmpty && item.collectionID == nil ? item : nil
         )
         await reload()

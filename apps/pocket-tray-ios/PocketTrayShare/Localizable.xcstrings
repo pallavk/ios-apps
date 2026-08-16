@@ -1,0 +1,147 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "A collection needs a name." : {
+
+    },
+    "Call %@" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Close" : {
+
+    },
+    "Copy %@" : {
+
+    },
+    "Copy tracking number %@" : {
+
+    },
+    "Done" : {
+
+    },
+    "No items saved. %lld couldn't be saved." : {
+
+    },
+    "Open %@" : {
+
+    },
+    "Open %@ in Calendar" : {
+
+    },
+    "Open %@ in Maps" : {
+
+    },
+    "Pocket Tray couldn't coordinate access to shared storage." : {
+
+    },
+    "Pocket Tray couldn't finish writing this object. Check available storage and try again; no partial capture was kept." : {
+
+    },
+    "Pocket Tray couldn't read that PDF." : {
+
+    },
+    "Pocket Tray couldn't read that image." : {
+
+    },
+    "Pocket Tray couldn't read the shared item." : {
+
+    },
+    "Pocket Tray couldn't save this object. Free up space on your iPhone, then try again." : {
+
+    },
+    "Pocket Tray doesn't support that file format." : {
+
+    },
+    "Pocket Tray supports shared images, PDFs, text, and web links." : {
+
+    },
+    "Pocket Tray's saved index is damaged and no usable backup is available. Your original files were not deleted." : {
+
+    },
+    "Pocket Tray's shared storage is unavailable." : {
+
+    },
+    "Possible sensitive content wasn't saved. Paste it in Pocket Tray to review it first." : {
+
+    },
+    "Saved %lld item to Pocket Tray" : {
+
+    },
+    "Saved %lld items to Pocket Tray" : {
+
+    },
+    "Saved %lld. %lld possible sensitive item needs in-app review." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Saved %1$lld. %2$lld possible sensitive item needs in-app review."
+          }
+        }
+      }
+    },
+    "Saved %lld. %lld possible sensitive items need in-app review." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Saved %1$lld. %2$lld possible sensitive items need in-app review."
+          }
+        }
+      }
+    },
+    "Saved %lld; %lld couldn't be saved." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Saved %1$lld; %2$lld couldn't be saved."
+          }
+        }
+      }
+    },
+    "Saving to Pocket Tray…" : {
+
+    },
+    "That Pocket Tray object is no longer available." : {
+
+    },
+    "That clipboard content is not supported yet." : {
+
+    },
+    "That collection is no longer available." : {
+
+    },
+    "That file is larger than %lld MB." : {
+
+    },
+    "The clipboard does not contain text to save." : {
+
+    },
+    "The original file is damaged and can't be opened. Re-copy and save it again, or delete this object." : {
+
+    },
+    "The original file is missing. Re-copy and save it again, or delete this object." : {
+
+    },
+    "This may contain sensitive content: %@. Review it before saving." : {
+
+    },
+    "Track %@" : {
+
+    },
+    "one-time code" : {
+
+    },
+    "payment card number" : {
+
+    },
+    "private key" : {
+
+    }
+  },
+  "version" : "1.0"
+}

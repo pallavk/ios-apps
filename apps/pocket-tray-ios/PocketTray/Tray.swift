@@ -11,17 +11,17 @@ enum TrayError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .collectionNotFound:
-            "That collection is no longer available."
+            String(localized: "That collection is no longer available.")
         case .emptyCollectionName:
-            "A collection needs a name."
+            String(localized: "A collection needs a name.")
         case .emptyText:
-            "The clipboard does not contain text to save."
+            String(localized: "The clipboard does not contain text to save.")
         case .itemNotFound:
-            "That Pocket Tray object is no longer available."
+            String(localized: "That Pocket Tray object is no longer available.")
         case let .sensitiveContentRequiresAcknowledgment(reasons):
-            "This may contain a \(reasons.map(\.warningLabel).joined(separator: " or ")). Review it before saving."
+            String(localized: "This may contain sensitive content: \(reasons.map(\.warningLabel).joined(separator: ", ")). Review it before saving.")
         case .unsupportedContent:
-            "That clipboard content is not supported yet."
+            String(localized: "That clipboard content is not supported yet.")
         }
     }
 }

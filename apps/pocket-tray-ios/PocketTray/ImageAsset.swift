@@ -40,17 +40,17 @@ enum TrayAssetError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .corrupt:
-            "The original file is damaged and can't be opened. Re-copy and save it again, or delete this object."
+            String(localized: "The original file is damaged and can't be opened. Re-copy and save it again, or delete this object.")
         case .invalidImage:
-            "Pocket Tray couldn't read that image."
+            String(localized: "Pocket Tray couldn't read that image.")
         case .invalidPDF:
-            "Pocket Tray couldn't read that PDF."
+            String(localized: "Pocket Tray couldn't read that PDF.")
         case .missing:
-            "The original file is missing. Re-copy and save it again, or delete this object."
+            String(localized: "The original file is missing. Re-copy and save it again, or delete this object.")
         case let .tooLarge(maximumBytes):
-            "That file is larger than \(maximumBytes / 1_000_000) MB."
+            String(localized: "That file is larger than \(maximumBytes / 1_000_000) MB.")
         case .unsupportedType:
-            "Pocket Tray doesn't support that file format."
+            String(localized: "Pocket Tray doesn't support that file format.")
         }
     }
 }

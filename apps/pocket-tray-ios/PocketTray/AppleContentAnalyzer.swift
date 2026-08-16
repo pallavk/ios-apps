@@ -22,8 +22,23 @@ struct AppleDetectedValue: Equatable, Sendable {
 struct AppleAnalysisFixture: Equatable, Sendable {
     let recognizedText: [String]
     let languageCode: String?
+    let languageCodes: [String]
     let entities: [AppleEntityFixture]
     let detectedValues: [AppleDetectedValue]
+
+    init(
+        recognizedText: [String],
+        languageCode: String?,
+        languageCodes: [String] = [],
+        entities: [AppleEntityFixture],
+        detectedValues: [AppleDetectedValue]
+    ) {
+        self.recognizedText = recognizedText
+        self.languageCode = languageCode
+        self.languageCodes = languageCodes
+        self.entities = entities
+        self.detectedValues = detectedValues
+    }
 }
 
 enum AppleAnalysisTranslator {
@@ -37,6 +52,9 @@ enum AppleAnalysisTranslator {
         return ContentAnalysis(
             searchableText: searchableLines.isEmpty ? nil : searchableLines.joined(separator: "\n"),
             languageCode: normalized(fixture.languageCode),
+            languageCodes: uniqueNormalized(
+                [fixture.languageCode].compactMap { $0 } + fixture.languageCodes
+            ),
             entities: entities,
             actions: actions
         )
@@ -102,13 +120,21 @@ enum AppleAnalysisTranslator {
 }
 
 struct AppleContentAnalyzer: ContentAnalyzing {
+    private let preferredLanguages: [String]
+
+    init(preferredLanguages: [String] = []) {
+        self.preferredLanguages = preferredLanguages
+    }
+
     func analyze(_ input: ContentAnalysisInput) async throws -> ContentAnalysis {
         let recognizedText = try recognizedText(from: input.assetData)
         let combinedText = ([input.text] + recognizedText).joined(separator: "\n")
-        let languageCode = dominantLanguage(in: combinedText)
+        let languageCodes = Self.languageHypotheses(in: combinedText)
+        let languageCode = languageCodes.first
         let fixture = AppleAnalysisFixture(
             recognizedText: recognizedText,
             languageCode: languageCode,
+            languageCodes: languageCodes,
             entities: namedEntities(in: combinedText, languageCode: languageCode),
             detectedValues: detectedValues(in: combinedText)
                 + trackingNumbers(in: combinedText)
@@ -118,7 +144,7 @@ struct AppleContentAnalyzer: ContentAnalyzing {
 
     private func recognizedText(from data: Data?) throws -> [String] {
         guard let data else { return [] }
-        let request = Self.makeRecognitionRequest()
+        let request = Self.makeRecognitionRequest(preferredLanguages: preferredLanguages)
         let handler = VNImageRequestHandler(data: data)
         try handler.perform([request])
         return (request.results ?? []).compactMap {
@@ -126,18 +152,70 @@ struct AppleContentAnalyzer: ContentAnalyzing {
         }
     }
 
-    static func makeRecognitionRequest() -> VNRecognizeTextRequest {
+    static func makeRecognitionRequest(
+        preferredLanguages: [String] = []
+    ) -> VNRecognizeTextRequest {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
         request.automaticallyDetectsLanguage = true
+        if
+            !preferredLanguages.isEmpty,
+            let supportedLanguages = try? request.supportedRecognitionLanguages()
+        {
+            let selected = supportedRecognitionPreferences(
+                preferredLanguages,
+                supportedLanguages: supportedLanguages
+            )
+            if !selected.isEmpty {
+                request.recognitionLanguages = selected
+            }
+        }
         return request
     }
 
-    private func dominantLanguage(in text: String) -> String? {
+    static func supportedRecognitionPreferences(
+        _ preferredLanguages: [String],
+        supportedLanguages: [String]
+    ) -> [String] {
+        var selected: [String] = []
+        for preferred in preferredLanguages {
+            let normalized = preferred.lowercased()
+            let components = normalized.split(separator: "-")
+            let includesScript = components.dropFirst().contains { $0.count == 4 }
+            let match = supportedLanguages.first { $0.lowercased() == normalized }
+                ?? supportedLanguages.first {
+                    let supported = $0.lowercased()
+                    return normalized.hasPrefix("\(supported)-")
+                        || supported.hasPrefix("\(normalized)-")
+                }
+                ?? (includesScript ? nil : supportedLanguages.first {
+                    $0.lowercased().split(separator: "-").first == components.first
+                })
+            if let match, !selected.contains(match) {
+                selected.append(match)
+            }
+        }
+        return selected
+    }
+
+    static func runtimeSupportedRecognitionLanguages() -> [String] {
+        let request = makeRecognitionRequest()
+        return (try? request.supportedRecognitionLanguages()) ?? []
+    }
+
+    static func languageHypotheses(in text: String, maximum: Int = 3) -> [String] {
+        guard maximum > 0 else { return [] }
         let recognizer = NLLanguageRecognizer()
         recognizer.processString(text)
-        return recognizer.dominantLanguage?.rawValue
+        return recognizer.languageHypotheses(withMaximum: maximum)
+            .sorted {
+                if $0.value == $1.value {
+                    return $0.key.rawValue < $1.key.rawValue
+                }
+                return $0.value > $1.value
+            }
+            .map(\.key.rawValue)
     }
 
     static func supportsNamedEntities(languageCode: String?) -> Bool {

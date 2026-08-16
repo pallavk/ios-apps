@@ -244,13 +244,14 @@ final class ImageCaptureTests: XCTestCase {
     func testOriginalImageBytesSurviveRepositoryRelaunch() async throws {
         let root = try temporaryRoot()
         let fileURL = root.appending(path: "tray.json")
+        let originalFilename = "旅行 Cafe\u{301} 👨‍👩‍👧‍👦.png"
         let first = Tray(repository: FileTrayRepository(fileURL: fileURL))
         let item = try await first.capture(
             .image(
                 ImagePayload(
                     data: onePixelPNG,
                     typeIdentifier: "public.png",
-                    filename: "original.png"
+                    filename: originalFilename
                 )
             )
         )
@@ -261,7 +262,8 @@ final class ImageCaptureTests: XCTestCase {
 
         XCTAssertEqual(resource.data, onePixelPNG)
         XCTAssertEqual(try Data(contentsOf: resource.url), onePixelPNG)
-        XCTAssertEqual(resource.exportURL.lastPathComponent, "original.png")
+        XCTAssertEqual(resource.asset.originalFilename, originalFilename)
+        XCTAssertEqual(resource.exportURL.lastPathComponent, originalFilename)
         XCTAssertEqual(try Data(contentsOf: resource.exportURL), onePixelPNG)
         XCTAssertEqual(recent.first?.id, item.id)
     }

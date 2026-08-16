@@ -1,0 +1,660 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%@" : {
+
+    },
+    "%@ object. Sensitive content hidden. %@ Use Object options to reveal or correct this warning." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ object. Sensitive content hidden. %2$@ Use Object options to reveal or correct this warning."
+          }
+        }
+      }
+    },
+    "%lld %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld %2$@"
+          }
+        }
+      }
+    },
+    "%lld original %@ missing or damaged. Re-capture the original or delete the affected object." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld original %2$@ missing or damaged. Re-capture the original or delete the affected object."
+          }
+        }
+      }
+    },
+    "A camera isn't available on this device." : {
+
+    },
+    "A collection needs a name." : {
+
+    },
+    "Add" : {
+
+    },
+    "Add Items" : {
+
+    },
+    "Add details" : {
+
+    },
+    "Add to Collection" : {
+
+    },
+    "Adds text or a photo directly to Pocket Tray" : {
+
+    },
+    "Adds this object to the collection" : {
+
+    },
+    "Allow camera access in Settings to take photos directly in Pocket Tray." : {
+
+    },
+    "Authenticates with the system security screen" : {
+
+    },
+    "Calculating usage…" : {
+
+    },
+    "Call %@" : {
+
+    },
+    "Camera Access Needed" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Capture Clipboard" : {
+
+    },
+    "Choose Photo" : {
+
+    },
+    "Clipboard" : {
+
+    },
+    "Clipboard ready" : {
+
+    },
+    "Collection" : {
+
+    },
+    "Collection deleted" : {
+
+    },
+    "Collection is empty" : {
+
+    },
+    "Collection name" : {
+
+    },
+    "Collections" : {
+
+    },
+    "Content" : {
+
+    },
+    "Copied %@" : {
+
+    },
+    "Copied %@ from Pocket Tray." : {
+
+    },
+    "Copied to clipboard" : {
+
+    },
+    "Copies this %@" : {
+
+    },
+    "Copy %@" : {
+
+    },
+    "Copy Link" : {
+
+    },
+    "Copy Object" : {
+
+    },
+    "Copy Saved Object" : {
+
+    },
+    "Copy Text" : {
+
+    },
+    "Copy the current value of a saved Pocket Tray text item or link." : {
+
+    },
+    "Copy tracking number %@" : {
+
+    },
+    "Couldn't save that collection" : {
+
+    },
+    "Couldn't save that text" : {
+
+    },
+    "Couldn't update that object" : {
+
+    },
+    "Couldn't update the collection" : {
+
+    },
+    "Create a collection from the Collections tab, then return here to assign this object." : {
+
+    },
+    "Create a collection when you want a little more structure." : {
+
+    },
+    "Currently in %@" : {
+
+    },
+    "Delete" : {
+
+    },
+    "Delete Collection" : {
+
+    },
+    "Delete Permanently" : {
+
+    },
+    "Delete this collection?" : {
+
+    },
+    "Delete this object permanently?" : {
+
+    },
+    "Deleted %@" : {
+
+    },
+    "Deleted and expired objects remain here for seven days." : {
+
+    },
+    "Deleted permanently" : {
+
+    },
+    "Deliberately save the current text, link, image, or PDF from the clipboard to Pocket Tray." : {
+
+    },
+    "Details" : {
+
+    },
+    "Does not expire" : {
+
+    },
+    "Done" : {
+
+    },
+    "Edit" : {
+
+    },
+    "Edit Object" : {
+
+    },
+    "Expires %@" : {
+
+    },
+    "Hide sensitive content" : {
+
+    },
+    "Image unavailable" : {
+
+    },
+    "In collection" : {
+
+    },
+    "Languages & Content" : {
+
+    },
+    "Link" : {
+
+    },
+    "Loading PDF…" : {
+
+    },
+    "Loading image…" : {
+
+    },
+    "Mark Not Sensitive" : {
+
+    },
+    "Marked as not sensitive" : {
+
+    },
+    "Move Collection" : {
+
+    },
+    "Move or Remove Collection" : {
+
+    },
+    "Move to Trash" : {
+
+    },
+    "Moved to Trash" : {
+
+    },
+    "New Collection" : {
+
+    },
+    "New Text" : {
+
+    },
+    "New text" : {
+
+    },
+    "No collections" : {
+
+    },
+    "No objects available" : {
+
+    },
+    "None" : {
+
+    },
+    "Not in collection" : {
+
+    },
+    "Note" : {
+
+    },
+    "Nothing pinned" : {
+
+    },
+    "Nothing to search yet" : {
+
+    },
+    "OCR follows your Language & Region order while automatic language detection remains enabled." : {
+
+    },
+    "OCR languages on this device" : {
+
+    },
+    "OK" : {
+
+    },
+    "Object" : {
+
+    },
+    "Object options" : {
+
+    },
+    "Object text" : {
+
+    },
+    "Objects in it will remain in Pocket Tray." : {
+
+    },
+    "Open %@" : {
+
+    },
+    "Open %@ in Calendar" : {
+
+    },
+    "Open %@ in Maps" : {
+
+    },
+    "Open Link" : {
+
+    },
+    "Open Object" : {
+
+    },
+    "Open Saved Object" : {
+
+    },
+    "Open Settings" : {
+
+    },
+    "Open a saved text item or link in Pocket Tray." : {
+
+    },
+    "Opened Calendar" : {
+
+    },
+    "Opened Maps" : {
+
+    },
+    "Opened Phone" : {
+
+    },
+    "Opened link" : {
+
+    },
+    "Opened tracking" : {
+
+    },
+    "Opens PDF preview and sharing" : {
+
+    },
+    "Opens image preview and sharing" : {
+
+    },
+    "Original unavailable" : {
+
+    },
+    "PDF" : {
+
+    },
+    "PDF unavailable" : {
+
+    },
+    "Pin" : {
+
+    },
+    "Pin an object to keep it from expiring." : {
+
+    },
+    "Pinned" : {
+
+    },
+    "Pocket Tray Locked" : {
+
+    },
+    "Pocket Tray could not verify your identity. App Lock remains off." : {
+
+    },
+    "Pocket Tray couldn't complete that" : {
+
+    },
+    "Pocket Tray couldn't coordinate access to shared storage." : {
+
+    },
+    "Pocket Tray couldn't finish writing this object. Check available storage and try again; no partial capture was kept." : {
+
+    },
+    "Pocket Tray couldn't open that link." : {
+
+    },
+    "Pocket Tray couldn't read that PDF." : {
+
+    },
+    "Pocket Tray couldn't read that image." : {
+
+    },
+    "Pocket Tray couldn't read the shared item." : {
+
+    },
+    "Pocket Tray couldn't save this object. Free up space on your iPhone, then try again." : {
+
+    },
+    "Pocket Tray doesn't support that file format." : {
+
+    },
+    "Pocket Tray found a possible secret." : {
+
+    },
+    "Pocket Tray found a possible secret. Save it only if you intend to keep it here." : {
+
+    },
+    "Pocket Tray found possible sensitive content: %@. Save it only if you intend to keep it here." : {
+
+    },
+    "Pocket Tray is locked. Open the app and authenticate before reusing saved objects." : {
+
+    },
+    "Pocket Tray is using %@. Nothing was deleted or compressed. Review usage in Settings." : {
+
+    },
+    "Pocket Tray preserves and searches Unicode text. On-device OCR and suggested actions are best effort and vary by language and device." : {
+
+    },
+    "Pocket Tray reads the clipboard only after you tap Save Clipboard." : {
+
+    },
+    "Pocket Tray recovered its saved index from the latest backup." : {
+
+    },
+    "Pocket Tray remains locked. Try Face ID or the device passcode again." : {
+
+    },
+    "Pocket Tray storage is over 500 MB" : {
+
+    },
+    "Pocket Tray storage is unavailable. Open the app and try again." : {
+
+    },
+    "Pocket Tray supports shared images, PDFs, text, and web links." : {
+
+    },
+    "Pocket Tray usage" : {
+
+    },
+    "Pocket Tray's saved index is damaged and no usable backup is available. Your original files were not deleted." : {
+
+    },
+    "Pocket Tray's shared storage is unavailable." : {
+
+    },
+    "Preferred OCR order" : {
+
+    },
+    "Preview and Share" : {
+
+    },
+    "Privacy" : {
+
+    },
+    "Reads and saves supported text, links, images, or PDFs" : {
+
+    },
+    "Reads and saves the current clipboard content" : {
+
+    },
+    "Recent" : {
+
+    },
+    "Refresh Storage Status" : {
+
+    },
+    "Removes this object from the collection" : {
+
+    },
+    "Rename" : {
+
+    },
+    "Rename Collection" : {
+
+    },
+    "Require Face ID or Passcode" : {
+
+    },
+    "Restore" : {
+
+    },
+    "Restored to Recent" : {
+
+    },
+    "Reveal" : {
+
+    },
+    "Save" : {
+
+    },
+    "Save Anyway" : {
+
+    },
+    "Save Clipboard" : {
+
+    },
+    "Save an object before adding it to this collection." : {
+
+    },
+    "Save possible sensitive content?" : {
+
+    },
+    "Saved Object" : {
+
+    },
+    "Saved objects will be searchable here." : {
+
+    },
+    "Saved the clipboard to Pocket Tray." : {
+
+    },
+    "Saved to Pocket Tray" : {
+
+    },
+    "Saving…" : {
+
+    },
+    "Search" : {
+
+    },
+    "Search Pocket Tray" : {
+
+    },
+    "Sensitive content hidden" : {
+
+    },
+    "Settings" : {
+
+    },
+    "Share Original" : {
+
+    },
+    "Shortcuts" : {
+
+    },
+    "Shows reuse, collection, edit, pin, and lifecycle actions" : {
+
+    },
+    "Storage" : {
+
+    },
+    "Suggested Actions" : {
+
+    },
+    "Take Photo" : {
+
+    },
+    "Tap Add to save text or a photo, or copy and share something from another app." : {
+
+    },
+    "Text" : {
+
+    },
+    "That Pocket Tray object is no longer available." : {
+
+    },
+    "That Pocket Tray object is no longer available. Choose another saved object." : {
+
+    },
+    "That clipboard content is not supported yet." : {
+
+    },
+    "That collection is no longer available." : {
+
+    },
+    "That file is larger than %lld MB." : {
+
+    },
+    "The clipboard does not contain supported text, a link, an image, or a PDF." : {
+
+    },
+    "The clipboard does not contain text to save." : {
+
+    },
+    "The original file is damaged and can't be opened. Re-copy and save it again, or delete this object." : {
+
+    },
+    "The original file is missing. Re-copy and save it again, or delete this object." : {
+
+    },
+    "This cannot be undone." : {
+
+    },
+    "This clipboard may contain a secret. Open Pocket Tray and use Paste to review it before saving." : {
+
+    },
+    "This may contain sensitive content: %@. Review it before saving." : {
+
+    },
+    "Title" : {
+
+    },
+    "Track %@" : {
+
+    },
+    "Trash" : {
+
+    },
+    "Trash is empty" : {
+
+    },
+    "Unlock" : {
+
+    },
+    "Unlock Pocket Tray" : {
+
+    },
+    "Unlock with Face ID or your device passcode." : {
+
+    },
+    "Unpin" : {
+
+    },
+    "Unpinned" : {
+
+    },
+    "Usage is over 500 MB. Pocket Tray will not delete or compress your objects automatically." : {
+
+    },
+    "Use Add Items to place existing objects here." : {
+
+    },
+    "Use Passcode" : {
+
+    },
+    "Use Pocket Tray actions from Shortcuts, Siri, Spotlight, the Action button, or Home Screen widgets." : {
+
+    },
+    "Use the options button to reveal or correct this warning." : {
+
+    },
+    "When enabled, Pocket Tray locks after you leave the app. Authentication uses Apple's system screen and supports the device passcode fallback." : {
+
+    },
+    "Which saved object?" : {
+
+    },
+    "Your tray is empty" : {
+
+    },
+    "address" : {
+
+    },
+    "date" : {
+
+    },
+    "link" : {
+
+    },
+    "one-time code" : {
+
+    },
+    "payment card number" : {
+
+    },
+    "phone number" : {
+
+    },
+    "private key" : {
+
+    },
+    "tracking number" : {
+
+    }
+  },
+  "version" : "1.0"
+}

@@ -8,9 +8,9 @@ enum SavedObjectShortcutError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .appLockEnabled:
-            "Pocket Tray is locked. Open the app and authenticate before reusing saved objects."
+            String(localized: "Pocket Tray is locked. Open the app and authenticate before reusing saved objects.")
         case .itemUnavailable:
-            "That Pocket Tray object is no longer available. Choose another saved object."
+            String(localized: "That Pocket Tray object is no longer available. Choose another saved object.")
         }
     }
 }

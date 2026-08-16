@@ -7,9 +7,9 @@ enum SensitiveContentReason: String, Codable, CaseIterable, Equatable, Sendable 
 
     var warningLabel: String {
         switch self {
-        case .oneTimeCode: "one-time code"
-        case .paymentCard: "payment card number"
-        case .privateKey: "private key"
+        case .oneTimeCode: String(localized: "one-time code")
+        case .paymentCard: String(localized: "payment card number")
+        case .privateKey: String(localized: "private key")
         }
     }
 

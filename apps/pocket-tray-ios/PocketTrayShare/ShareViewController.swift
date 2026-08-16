@@ -21,10 +21,10 @@ final class ShareViewController: UIViewController {
         statusLabel.font = .preferredFont(forTextStyle: .headline)
         statusLabel.numberOfLines = 0
         statusLabel.textAlignment = .center
-        statusLabel.text = "Saving to Pocket Tray…"
+        statusLabel.text = String(localized: "Saving to Pocket Tray…")
 
         actionButton.configuration = .borderedProminent()
-        actionButton.configuration?.title = "Cancel"
+        actionButton.configuration?.title = String(localized: "Cancel")
         actionButton.addTarget(self, action: #selector(finish), for: .touchUpInside)
 
         let stack = UIStackView(arrangedSubviews: [statusLabel, actionButton])
@@ -85,20 +85,24 @@ final class ShareViewController: UIViewController {
                 let rejected = result.rejected.count
                 let sensitive = result.rejected.count { $0 == .sensitive }
                 if saved == 0, sensitive > 0 {
-                    statusLabel.text = "Possible sensitive content wasn't saved. Paste it in Pocket Tray to review it first."
-                    actionButton.configuration?.title = "Close"
+                    statusLabel.text = String(localized: "Possible sensitive content wasn't saved. Paste it in Pocket Tray to review it first.")
+                    actionButton.configuration?.title = String(localized: "Close")
                 } else if saved == 0 {
-                    statusLabel.text = "No items saved. \(rejected) couldn't be saved."
-                    actionButton.configuration?.title = "Close"
+                    statusLabel.text = String(localized: "No items saved. \(rejected) couldn't be saved.")
+                    actionButton.configuration?.title = String(localized: "Close")
                 } else if rejected == 0 {
-                    statusLabel.text = "Saved \(saved) \(saved == 1 ? "item" : "items") to Pocket Tray"
-                    actionButton.configuration?.title = "Done"
+                    statusLabel.text = saved == 1
+                        ? String(localized: "Saved \(saved) item to Pocket Tray")
+                        : String(localized: "Saved \(saved) items to Pocket Tray")
+                    actionButton.configuration?.title = String(localized: "Done")
                 } else if sensitive > 0 {
-                    statusLabel.text = "Saved \(saved). \(sensitive) possible sensitive \(sensitive == 1 ? "item needs" : "items need") in-app review."
-                    actionButton.configuration?.title = "Done"
+                    statusLabel.text = sensitive == 1
+                        ? String(localized: "Saved \(saved). \(sensitive) possible sensitive item needs in-app review.")
+                        : String(localized: "Saved \(saved). \(sensitive) possible sensitive items need in-app review.")
+                    actionButton.configuration?.title = String(localized: "Done")
                 } else {
-                    statusLabel.text = "Saved \(saved); \(rejected) couldn't be saved."
-                    actionButton.configuration?.title = "Done"
+                    statusLabel.text = String(localized: "Saved \(saved); \(rejected) couldn't be saved.")
+                    actionButton.configuration?.title = String(localized: "Done")
                 }
             } catch is CancellationError {
                 return
@@ -112,7 +116,7 @@ final class ShareViewController: UIViewController {
         captureState = .finished
         actionButton.isEnabled = true
         statusLabel.text = error.localizedDescription
-        actionButton.configuration?.title = "Close"
+        actionButton.configuration?.title = String(localized: "Close")
     }
 
     @objc private func finish() {

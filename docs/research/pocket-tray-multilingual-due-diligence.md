@@ -6,6 +6,12 @@ Verified 2026-08-16 against the Pocket Tray working tree atop `761357f`, Apple p
 
 Pocket Tray can safely claim **Unicode text capture, display, persistence, copy, and literal search across scripts**. It should **not yet claim uniformly multilingual OCR, entity/action detection, or a localized interface**.
 
+### Implementation update — 2026-08-17
+
+Issue #15 added app, share-extension, and controls string catalogs; routed generated action titles, UIKit share status/plural messages, authentication copy, errors, and feedback through localization APIs; retained up to three language hypotheses with backward-compatible decoding; and made OCR preference order follow the device's Language & Region order intersected with Vision's runtime-supported set while automatic detection remains enabled. Settings now reports the runtime OCR language count and the effective preference order.
+
+The regression matrix now covers Korean, Hindi, Simplified and Traditional Chinese, Arabic, Hebrew, accented/decomposed Latin, mixed scripts and numerals, emoji grapheme sequences, and exact multilingual export filenames. Forced RTL at the largest accessibility text size was visually checked in Simulator. The interface still ships only English source copy: a non-English locale must not ship until an actual user selects it and native-speaker copy is reviewed.
+
 The architecture is sound: it uses Swift `String`, `Codable`/`JSONEncoder`, high-level Foundation URLs, native SwiftUI text controls, on-device Vision, and Natural Language. Apple explicitly says Vision OCR runs on device, and the current request enables accurate recognition, language correction, and automatic language detection. However, OCR languages vary by request revision and recognition level; Natural Language tag schemes vary by language and device; and Apple does not publish a comprehensive language guarantee for `NSDataDetector`. Those capabilities must be presented as best-effort and tested by capability, not inferred from the device language.
 
 ## What works today
@@ -120,4 +126,3 @@ Sources: [Apple APFS FAQ: filenames](https://developer.apple.com/library/archive
 ## Recommended release gate
 
 For issue #8, ship the current on-device analysis only after the capability checks and multilingual data/search persistence tests pass. UI translation can be a separate issue if the product copy remains explicit that the **content** may be multilingual while the **interface** is English. Full multilingual operations require the string catalog and RTL/Dynamic Type device matrix before the claim changes.
-

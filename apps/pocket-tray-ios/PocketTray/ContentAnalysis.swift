@@ -29,15 +29,21 @@ struct ContentAction: Codable, Equatable, Identifiable, Sendable {
     var suggestedTitle: String {
         switch kind {
         case .url:
-            return "Open \(value)"
+            return String(localized: "Open \(value)")
         case .phone:
-            return "Call \(value)"
+            return String(localized: "Call \(value)")
         case .address:
-            return target == nil ? "Copy \(value)" : "Open \(value) in Maps"
+            return target == nil
+                ? String(localized: "Copy \(value)")
+                : String(localized: "Open \(value) in Maps")
         case .date:
-            return target == nil ? "Copy \(value)" : "Open \(value) in Calendar"
+            return target == nil
+                ? String(localized: "Copy \(value)")
+                : String(localized: "Open \(value) in Calendar")
         case .trackingNumber:
-            return target == nil ? "Copy tracking number \(value)" : "Track \(value)"
+            return target == nil
+                ? String(localized: "Copy tracking number \(value)")
+                : String(localized: "Track \(value)")
         }
     }
 }
@@ -45,8 +51,23 @@ struct ContentAction: Codable, Equatable, Identifiable, Sendable {
 struct ContentAnalysis: Codable, Equatable, Sendable {
     let searchableText: String?
     let languageCode: String?
+    let languageCodes: [String]?
     let entities: [ContentEntity]
     let actions: [ContentAction]
+
+    init(
+        searchableText: String?,
+        languageCode: String?,
+        languageCodes: [String]? = nil,
+        entities: [ContentEntity],
+        actions: [ContentAction]
+    ) {
+        self.searchableText = searchableText
+        self.languageCode = languageCode
+        self.languageCodes = languageCodes
+        self.entities = entities
+        self.actions = actions
+    }
 }
 
 struct ContentAnalysisInput: Equatable, Sendable {

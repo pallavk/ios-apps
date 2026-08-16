@@ -39,7 +39,7 @@ protocol AppAuthenticating: AnyObject {
 final class SystemAppAuthenticator: AppAuthenticating {
     func authenticate() async -> Bool {
         let context = LAContext()
-        context.localizedFallbackTitle = "Use Passcode"
+        context.localizedFallbackTitle = String(localized: "Use Passcode")
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             return false
@@ -47,7 +47,7 @@ final class SystemAppAuthenticator: AppAuthenticating {
         do {
             return try await context.evaluatePolicy(
                 .deviceOwnerAuthentication,
-                localizedReason: "Unlock Pocket Tray"
+                localizedReason: String(localized: "Unlock Pocket Tray")
             )
         } catch {
             return false
@@ -78,7 +78,7 @@ final class AppLockController: ObservableObject {
         guard enabled != isEnabled else { return }
         if enabled {
             guard await authenticator.authenticate() else {
-                errorMessage = "Pocket Tray could not verify your identity. App Lock remains off."
+                errorMessage = String(localized: "Pocket Tray could not verify your identity. App Lock remains off.")
                 return
             }
             settings.isAppLockEnabled = true
@@ -107,7 +107,7 @@ final class AppLockController: ObservableObject {
             errorMessage = nil
         } else {
             isLocked = true
-            errorMessage = "Pocket Tray remains locked. Try Face ID or the device passcode again."
+            errorMessage = String(localized: "Pocket Tray remains locked. Try Face ID or the device passcode again.")
         }
     }
 }
@@ -180,6 +180,7 @@ struct AppLockSettingsView: View {
     @State private var isChangingSetting = false
     @State private var storageReport: TrayStorageReport?
     @State private var storageError: String?
+    @State private var supportedOCRLanguages: [String] = []
 
     var body: some View {
         NavigationStack {
@@ -231,6 +232,24 @@ struct AppLockSettingsView: View {
                     }
                     Button("Refresh Storage Status") { Task { await loadStorageReport() } }
                 }
+                Section("Languages & Content") {
+                    Text("Pocket Tray preserves and searches Unicode text. On-device OCR and suggested actions are best effort and vary by language and device.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    LabeledContent("OCR languages on this device") {
+                        Text(supportedOCRLanguages.count, format: .number)
+                    }
+                    let preferred = preferredSupportedOCRLanguages
+                    if !preferred.isEmpty {
+                        LabeledContent("Preferred OCR order") {
+                            Text(preferred.map(localizedLanguageName).joined(separator: ", "))
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    Text("OCR follows your Language & Region order while automatic language detection remains enabled.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 Section("Privacy") {
                     Toggle(
                         "Require Face ID or Passcode",
@@ -251,7 +270,10 @@ struct AppLockSettingsView: View {
                     }
                 }
             }
-            .task { await loadStorageReport() }
+            .task {
+                supportedOCRLanguages = AppleContentAnalyzer.runtimeSupportedRecognitionLanguages()
+                await loadStorageReport()
+            }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -269,6 +291,17 @@ struct AppLockSettingsView: View {
         } catch {
             storageError = error.localizedDescription
         }
+    }
+
+    private var preferredSupportedOCRLanguages: [String] {
+        AppleContentAnalyzer.supportedRecognitionPreferences(
+            Locale.preferredLanguages,
+            supportedLanguages: supportedOCRLanguages
+        )
+    }
+
+    private func localizedLanguageName(_ identifier: String) -> String {
+        Locale.current.localizedString(forIdentifier: identifier) ?? identifier
     }
 
     private func updateAppLock(_ isEnabled: Bool) {

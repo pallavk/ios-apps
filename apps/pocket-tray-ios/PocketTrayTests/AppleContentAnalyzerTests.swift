@@ -12,6 +12,15 @@ final class AppleContentAnalyzerTests: XCTestCase {
         XCTAssertEqual(request.recognitionLevel, .accurate)
     }
 
+    func testOCRLanguagePreferencesPreserveOrderAndOnlyUseRuntimeSupport() {
+        let selected = AppleContentAnalyzer.supportedRecognitionPreferences(
+            ["zh-Hant-SG", "ja-JP", "en-SG", "zz-ZZ"],
+            supportedLanguages: ["en-US", "ja-JP", "zh-Hant"]
+        )
+
+        XCTAssertEqual(selected, ["zh-Hant", "ja-JP", "en-US"])
+    }
+
     func testRuntimeReportsOCRLanguagesAndEntityCapabilities() throws {
         let request = AppleContentAnalyzer.makeRecognitionRequest()
         let languages = try request.supportedRecognitionLanguages()
@@ -30,6 +39,7 @@ final class AppleContentAnalyzerTests: XCTestCase {
         let fixture = AppleAnalysisFixture(
             recognizedText: ["Receipt from Orchard Cafe", "Call +65 6123 4567"],
             languageCode: "en",
+            languageCodes: ["en", "ms"],
             entities: [
                 AppleEntityFixture(kind: .organization, value: "Orchard Cafe"),
                 AppleEntityFixture(kind: .person, value: "Pallav"),
@@ -54,6 +64,7 @@ final class AppleContentAnalyzerTests: XCTestCase {
             "Receipt photo\nReceipt from Orchard Cafe\nCall +65 6123 4567"
         )
         XCTAssertEqual(result.languageCode, "en")
+        XCTAssertEqual(result.languageCodes, ["en", "ms"])
         XCTAssertEqual(result.entities, [
             ContentEntity(kind: .organization, value: "Orchard Cafe"),
             ContentEntity(kind: .person, value: "Pallav"),
@@ -67,6 +78,16 @@ final class AppleContentAnalyzerTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(result.actions[2].target).hasPrefix("http://maps.apple.com/"))
         XCTAssertEqual(result.actions[3].target, "calshow:821692800")
         XCTAssertTrue(try XCTUnwrap(result.actions[4].target).contains("1Z999AA10123456784"))
+    }
+
+    func testMixedLanguageHypothesesRetainMoreThanTheDominantLanguage() {
+        let hypotheses = AppleContentAnalyzer.languageHypotheses(
+            in: "Meeting in Tokyo tomorrow. 明日は東京で会いましょう。"
+        )
+
+        XCTAssertFalse(hypotheses.isEmpty)
+        XCTAssertEqual(Set(hypotheses).count, hypotheses.count)
+        XCTAssertTrue(hypotheses.count <= 3)
     }
 
     func testTranslationNormalizesAndDeduplicatesFrameworkResults() {
@@ -88,6 +109,15 @@ final class AppleContentAnalyzerTests: XCTestCase {
         XCTAssertEqual(result.searchableText, "Title\nHello world")
         XCTAssertEqual(result.entities.count, 1)
         XCTAssertEqual(result.actions.count, 1)
+    }
+
+    func testLegacyAnalysisWithoutLanguageHypothesesStillDecodes() throws {
+        let data = Data(#"{"searchableText":"hello","languageCode":"en","entities":[],"actions":[]}"#.utf8)
+
+        let analysis = try JSONDecoder().decode(ContentAnalysis.self, from: data)
+
+        XCTAssertEqual(analysis.languageCode, "en")
+        XCTAssertNil(analysis.languageCodes)
     }
 
     func testImageAdapterKeepsBaseTextInSearchIndex() async throws {

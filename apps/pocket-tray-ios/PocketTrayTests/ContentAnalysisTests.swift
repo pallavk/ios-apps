@@ -218,7 +218,10 @@ final class ContentAnalysisTests: XCTestCase {
             TrayItem(id: UUID(), text: "Crème brûlée", capturedAt: Date()),
             TrayItem(id: UUID(), text: "مرحبا بالعالم", capturedAt: Date()),
             TrayItem(id: UUID(), text: "Ｐｏｃｋｅｔ　Ｔｒａｙ 東京", capturedAt: Date()),
-            TrayItem(id: UUID(), text: "Cafe\u{301} משפחה 👨‍👩‍👧‍👦", capturedAt: Date())
+            TrayItem(id: UUID(), text: "Cafe\u{301} משפחה 👨‍👩‍👧‍👦", capturedAt: Date()),
+            TrayItem(id: UUID(), text: "한국어 메모 हिन्दी नोट", capturedAt: Date()),
+            TrayItem(id: UUID(), text: "简体中文與繁體中文", capturedAt: Date()),
+            TrayItem(id: UUID(), text: "رقم 123-ABC משפחה", capturedAt: Date())
         ]
         let snapshot = TraySnapshot(recent: items, pinned: [], trash: [], collections: [])
 
@@ -227,8 +230,13 @@ final class ContentAnalysisTests: XCTestCase {
         XCTAssertEqual(snapshot.search("Pocket Tray").map(\.id), [items[2].id])
         XCTAssertEqual(snapshot.search("東京").map(\.id), [items[2].id])
         XCTAssertEqual(snapshot.search("Café").map(\.id), [items[3].id])
-        XCTAssertEqual(snapshot.search("משפחה").map(\.id), [items[3].id])
+        XCTAssertEqual(snapshot.search("משפחה").map(\.id), [items[3].id, items[6].id])
         XCTAssertEqual(snapshot.search("👨‍👩‍👧‍👦").map(\.id), [items[3].id])
+        XCTAssertEqual(snapshot.search("한국어").map(\.id), [items[4].id])
+        XCTAssertEqual(snapshot.search("हिन्दी").map(\.id), [items[4].id])
+        XCTAssertEqual(snapshot.search("简体中文").map(\.id), [items[5].id])
+        XCTAssertEqual(snapshot.search("繁體中文").map(\.id), [items[5].id])
+        XCTAssertEqual(snapshot.search("123-ABC").map(\.id), [items[6].id])
     }
 
     func testFileRepositoryRoundTripsMultilingualContentAndMetadataExactly() async throws {

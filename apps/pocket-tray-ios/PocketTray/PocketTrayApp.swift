@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 @main
@@ -12,7 +13,10 @@ struct PocketTrayApp: App {
         } catch {
             repository = UnavailableTrayRepository()
         }
-        tray = Tray(repository: repository, analyzer: AppleContentAnalyzer())
+        tray = Tray(
+            repository: repository,
+            analyzer: AppleContentAnalyzer(preferredLanguages: Locale.preferredLanguages)
+        )
         _appLockController = StateObject(wrappedValue: AppLockController())
     }
 

@@ -7,9 +7,9 @@ enum ShareCaptureError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupported:
-            "Pocket Tray supports shared images, PDFs, text, and web links."
+            String(localized: "Pocket Tray supports shared images, PDFs, text, and web links.")
         case .unreadable:
-            "Pocket Tray couldn't read the shared item."
+            String(localized: "Pocket Tray couldn't read the shared item.")
         }
     }
 }
