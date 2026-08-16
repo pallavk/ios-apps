@@ -52,6 +52,7 @@ struct RootView: View {
 
     let tray: Tray
     private let clipboard: any TextClipboard
+    private let clipboardAvailabilityChecker: any ClipboardAvailabilityChecking
     private let appLockController: AppLockController
 
     @State private var selectedSection = Section.recent
@@ -64,14 +65,17 @@ struct RootView: View {
     @State private var pendingPermanentDeletion: TrayItem?
     @State private var pendingSensitiveCapture: PreparedTrayCapture?
     @State private var sensitivePreviewSession = SensitivePreviewSession()
+    @State private var hasSupportedClipboardContent = false
 
     init(
         tray: Tray,
         clipboard: any TextClipboard = SystemTextClipboard(),
+        clipboardAvailabilityChecker: any ClipboardAvailabilityChecking = SystemClipboardAvailabilityChecker(),
         appLockController: AppLockController = AppLockController()
     ) {
         self.tray = tray
         self.clipboard = clipboard
+        self.clipboardAvailabilityChecker = clipboardAvailabilityChecker
         self.appLockController = appLockController
     }
 
@@ -83,10 +87,16 @@ struct RootView: View {
                     .tag(section)
             }
         }
-        .task { await reload() }
+        .task {
+            await reload()
+            await refreshClipboardAvailability()
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
-                Task { await reload() }
+                Task {
+                    await reload()
+                    await refreshClipboardAvailability()
+                }
             } else {
                 sensitivePreviewSession.endForegroundSession()
             }
@@ -210,7 +220,18 @@ struct RootView: View {
 
     @ViewBuilder
     private func sectionContent(_ section: Section, items: [TrayItem]) -> some View {
-        if section == .collections {
+        if section == .recent, hasSupportedClipboardContent {
+            VStack(spacing: 0) {
+                Label("Clipboard content is ready to save", systemImage: "clipboard")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("clipboard-available")
+                recentContent(items)
+            }
+        } else if section == .collections {
             collectionsContent
         } else if section == .recent && !searchText.isEmpty && items.isEmpty {
             ContentUnavailableView.search(text: searchText)
@@ -218,6 +239,17 @@ struct RootView: View {
             emptyState(for: section)
         } else {
             itemList(items, section: section)
+        }
+    }
+
+    @ViewBuilder
+    private func recentContent(_ items: [TrayItem]) -> some View {
+        if !searchText.isEmpty && items.isEmpty {
+            ContentUnavailableView.search(text: searchText)
+        } else if items.isEmpty {
+            emptyState(for: .recent)
+        } else {
+            itemList(items, section: .recent)
         }
     }
 
@@ -674,6 +706,10 @@ struct RootView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func refreshClipboardAvailability() async {
+        hasSupportedClipboardContent = await clipboardAvailabilityChecker.hasSupportedContent()
     }
 }
 
