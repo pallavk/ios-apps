@@ -20,6 +20,8 @@
 		A10000000000000000000112 /* PDFCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000E /* PDFCaptureTests.swift */; };
 		A10000000000000000000113 /* PDFAsset.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000F /* PDFAsset.swift */; };
 		A10000000000000000000114 /* TrayPDFViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* TrayPDFViews.swift */; };
+		A10000000000000000000115 /* ContentAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* ContentAnalysis.swift */; };
+		A10000000000000000000116 /* ContentAnalysisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* ContentAnalysisTests.swift */; };
 		B20000000000000000000101 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* ShareViewController.swift */; };
 		B20000000000000000000102 /* Tray.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000006 /* Tray.swift */; };
 		B20000000000000000000103 /* TrayPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* TrayPersistence.swift */; };
@@ -28,6 +30,7 @@
 		B20000000000000000000107 /* AssetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* AssetStore.swift */; };
 		B20000000000000000000108 /* NSItemProviderShareItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000D /* NSItemProviderShareItem.swift */; };
 		B20000000000000000000109 /* PDFAsset.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000F /* PDFAsset.swift */; };
+		B20000000000000000000110 /* ContentAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* ContentAnalysis.swift */; };
 		B20000000000000000000105 /* PocketTrayShare.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B20000000000000000000004 /* PocketTrayShare.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -65,6 +68,8 @@
 		A1000000000000000000000E /* PDFCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFCaptureTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000000F /* PDFAsset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFAsset.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* TrayPDFViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrayPDFViews.swift; sourceTree = "<group>"; };
+		A10000000000000000000011 /* ContentAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentAnalysis.swift; sourceTree = "<group>"; };
+		A10000000000000000000012 /* ContentAnalysisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentAnalysisTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000001 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B20000000000000000000003 /* PocketTrayShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PocketTrayShare.entitlements; sourceTree = "<group>"; };
@@ -115,6 +120,7 @@
 				A1000000000000000000000D /* NSItemProviderShareItem.swift */,
 				A1000000000000000000000F /* PDFAsset.swift */,
 				A10000000000000000000010 /* TrayPDFViews.swift */,
+				A10000000000000000000011 /* ContentAnalysis.swift */,
 				B20000000000000000000005 /* PocketTray.entitlements */,
 			);
 			path = PocketTray;
@@ -132,7 +138,7 @@
 		};
 		A10000000000000000000303 /* PocketTrayTests */ = {
 			isa = PBXGroup;
-			children = (A10000000000000000000003 /* TrayTests.swift */, A1000000000000000000000A /* ImageCaptureTests.swift */, A1000000000000000000000E /* PDFCaptureTests.swift */);
+			children = (A10000000000000000000003 /* TrayTests.swift */, A1000000000000000000000A /* ImageCaptureTests.swift */, A1000000000000000000000E /* PDFCaptureTests.swift */, A10000000000000000000012 /* ContentAnalysisTests.swift */);
 			path = PocketTrayTests;
 			sourceTree = "<group>";
 		};
@@ -234,9 +240,9 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A10000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000101 /* PocketTrayApp.swift in Sources */, A10000000000000000000102 /* RootView.swift in Sources */, A10000000000000000000104 /* Tray.swift in Sources */, A10000000000000000000105 /* TrayPersistence.swift in Sources */, A10000000000000000000106 /* ShareCapture.swift in Sources */, A10000000000000000000107 /* ImageAsset.swift in Sources */, A10000000000000000000109 /* AssetStore.swift in Sources */, A10000000000000000000110 /* TrayImageViews.swift in Sources */, A10000000000000000000111 /* NSItemProviderShareItem.swift in Sources */, A10000000000000000000113 /* PDFAsset.swift in Sources */, A10000000000000000000114 /* TrayPDFViews.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
-		A10000000000000000000502 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000103 /* TrayTests.swift in Sources */, A10000000000000000000108 /* ImageCaptureTests.swift in Sources */, A10000000000000000000112 /* PDFCaptureTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
-		B20000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B20000000000000000000101 /* ShareViewController.swift in Sources */, B20000000000000000000102 /* Tray.swift in Sources */, B20000000000000000000103 /* TrayPersistence.swift in Sources */, B20000000000000000000104 /* ShareCapture.swift in Sources */, B20000000000000000000106 /* ImageAsset.swift in Sources */, B20000000000000000000107 /* AssetStore.swift in Sources */, B20000000000000000000108 /* NSItemProviderShareItem.swift in Sources */, B20000000000000000000109 /* PDFAsset.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000101 /* PocketTrayApp.swift in Sources */, A10000000000000000000102 /* RootView.swift in Sources */, A10000000000000000000104 /* Tray.swift in Sources */, A10000000000000000000105 /* TrayPersistence.swift in Sources */, A10000000000000000000106 /* ShareCapture.swift in Sources */, A10000000000000000000107 /* ImageAsset.swift in Sources */, A10000000000000000000109 /* AssetStore.swift in Sources */, A10000000000000000000110 /* TrayImageViews.swift in Sources */, A10000000000000000000111 /* NSItemProviderShareItem.swift in Sources */, A10000000000000000000113 /* PDFAsset.swift in Sources */, A10000000000000000000114 /* TrayPDFViews.swift in Sources */, A10000000000000000000115 /* ContentAnalysis.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000502 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000103 /* TrayTests.swift in Sources */, A10000000000000000000108 /* ImageCaptureTests.swift in Sources */, A10000000000000000000112 /* PDFCaptureTests.swift in Sources */, A10000000000000000000116 /* ContentAnalysisTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		B20000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B20000000000000000000101 /* ShareViewController.swift in Sources */, B20000000000000000000102 /* Tray.swift in Sources */, B20000000000000000000103 /* TrayPersistence.swift in Sources */, B20000000000000000000104 /* ShareCapture.swift in Sources */, B20000000000000000000106 /* ImageAsset.swift in Sources */, B20000000000000000000107 /* AssetStore.swift in Sources */, B20000000000000000000108 /* NSItemProviderShareItem.swift in Sources */, B20000000000000000000109 /* PDFAsset.swift in Sources */, B20000000000000000000110 /* ContentAnalysis.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */

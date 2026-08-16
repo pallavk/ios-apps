@@ -59,6 +59,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
     private(set) var note: String?
     private(set) var collectionID: UUID?
     private(set) var asset: TrayAsset?
+    private(set) var analysis: ContentAnalysis?
     private(set) var deduplicationKeys: Set<String>
     private(set) var expiresAt: Date?
     private(set) var state: TrayItemState
@@ -75,6 +76,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         note: String? = nil,
         collectionID: UUID? = nil,
         asset: TrayAsset? = nil,
+        analysis: ContentAnalysis? = nil,
         deduplicationKeys: Set<String>? = nil,
         expiresAt: Date? = nil,
         state: TrayItemState = .recent,
@@ -90,6 +92,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         self.note = note
         self.collectionID = collectionID
         self.asset = asset
+        self.analysis = analysis
         self.deduplicationKeys = deduplicationKeys ?? [asset?.digest ?? text]
         self.expiresAt = expiresAt
         self.state = state
@@ -107,6 +110,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         case note
         case collectionID
         case asset
+        case analysis
         case deduplicationKeys
         case deduplicationKey
         case expiresAt
@@ -126,6 +130,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         note = try container.decodeIfPresent(String.self, forKey: .note)
         collectionID = try container.decodeIfPresent(UUID.self, forKey: .collectionID)
         asset = try container.decodeIfPresent(TrayAsset.self, forKey: .asset)
+        analysis = try container.decodeIfPresent(ContentAnalysis.self, forKey: .analysis)
         if let storedKeys = try container.decodeIfPresent(Set<String>.self, forKey: .deduplicationKeys) {
             deduplicationKeys = storedKeys.union([asset?.digest ?? text])
         } else if let legacyKey = try container.decodeIfPresent(String.self, forKey: .deduplicationKey) {
@@ -157,6 +162,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         try container.encodeIfPresent(note, forKey: .note)
         try container.encodeIfPresent(collectionID, forKey: .collectionID)
         try container.encodeIfPresent(asset, forKey: .asset)
+        try container.encodeIfPresent(analysis, forKey: .analysis)
         try container.encode(deduplicationKeys, forKey: .deduplicationKeys)
         try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
         try container.encode(state, forKey: .state)
@@ -185,6 +191,9 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
     func applying(_ edits: TrayItemEdits) -> TrayItem {
         var updated = self
         if asset == nil {
+            if updated.kind != edits.kind || updated.text != edits.text {
+                updated.analysis = nil
+            }
             updated.kind = edits.kind
             updated.text = edits.text
             updated.deduplicationKeys.insert(edits.text)
@@ -193,6 +202,16 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         updated.note = edits.note
         updated.collectionID = edits.collectionID
         return updated
+    }
+
+    func settingAnalysis(_ analysis: ContentAnalysis) -> TrayItem {
+        var updated = self
+        updated.analysis = analysis
+        return updated
+    }
+
+    var analysisSourceKey: String {
+        "\(kind.rawValue)\u{0}\(text)\u{0}\(asset?.digest ?? "")"
     }
 
     func assigning(to collectionID: UUID?) -> TrayItem {
@@ -269,6 +288,7 @@ enum TrayMutation: Sendable {
     case assign(UUID, UUID?, Date)
     case renameCollection(UUID, String)
     case deleteCollection(UUID)
+    case setAnalysis(UUID, sourceKey: String, ContentAnalysis)
 }
 
 enum TrayMutationResult: Sendable {
@@ -326,13 +346,19 @@ struct PreparedTrayCapture: Sendable {
 struct Tray: Sendable {
     private let repository: any TrayRepository
     private let now: @Sendable () -> Date
+    private let analyzer: any ContentAnalyzing
+    private let analysisScheduler: ContentAnalysisScheduler
 
     init(
         repository: any TrayRepository,
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        analyzer: any ContentAnalyzing = UnavailableContentAnalyzer(),
+        analysisScheduler: ContentAnalysisScheduler = ContentAnalysisScheduler()
     ) {
         self.repository = repository
         self.now = now
+        self.analyzer = analyzer
+        self.analysisScheduler = analysisScheduler
     }
 
     func capture(_ content: CaptureContent) async throws -> TrayItem {
@@ -405,6 +431,7 @@ struct Tray: Sendable {
         ).item else {
             throw TrayError.itemNotFound
         }
+        await scheduleAnalysis(for: saved)
         return saved
     }
 
@@ -434,6 +461,9 @@ struct Tray: Sendable {
 
     func snapshot() async throws -> TraySnapshot {
         let store = try await repository.store(at: now())
+        for item in store.items where item.analysis == nil {
+            await scheduleAnalysis(for: item)
+        }
         let recent = store.items.filter { $0.state == .recent }.newestFirst()
         return TraySnapshot(
             recent: recent,
@@ -534,7 +564,45 @@ struct Tray: Sendable {
         guard let item = try await repository.apply(.edit(id, edits, now())).item else {
             throw TrayError.itemNotFound
         }
+        if item.analysis == nil {
+            await scheduleAnalysis(for: item)
+        }
         return item
+    }
+
+    private func scheduleAnalysis(for item: TrayItem) async {
+        await analysisScheduler.schedule(itemID: item.id) {
+            await analyzeAndPersist(item)
+        }
+    }
+
+    private func analyzeAndPersist(_ item: TrayItem) async {
+        do {
+            let assetData: Data?
+            let assetTypeIdentifier: String?
+            if item.kind == .image, let asset = item.asset {
+                let resource = try await repository.resource(for: asset)
+                assetData = resource.data
+                assetTypeIdentifier = asset.typeIdentifier
+            } else {
+                assetData = nil
+                assetTypeIdentifier = nil
+            }
+            let result = try await analyzer.analyze(
+                ContentAnalysisInput(
+                    itemID: item.id,
+                    kind: item.kind,
+                    text: item.text,
+                    assetData: assetData,
+                    assetTypeIdentifier: assetTypeIdentifier
+                )
+            )
+            _ = try await repository.apply(
+                .setAnalysis(item.id, sourceKey: item.analysisSourceKey, result)
+            )
+        } catch {
+            // Intelligence is best-effort. The durable original remains usable.
+        }
     }
 
     private static func nonBlank(_ value: String?) -> String? {
@@ -610,7 +678,22 @@ extension TrayStore {
             .collection(renameCollection(id, to: name))
         case let .deleteCollection(id):
             .success(deleteCollection(id))
+        case let .setAnalysis(id, sourceKey, analysis):
+            .item(setAnalysis(analysis, for: id, sourceKey: sourceKey))
         }
+    }
+
+    private mutating func setAnalysis(
+        _ analysis: ContentAnalysis,
+        for id: UUID,
+        sourceKey: String
+    ) -> TrayItem? {
+        guard let index = items.firstIndex(where: {
+            $0.id == id && $0.analysisSourceKey == sourceKey
+        }) else { return nil }
+        let updated = items[index].settingAnalysis(analysis)
+        items[index] = updated
+        return updated
     }
 
     private mutating func createCollection(_ collection: TrayCollection) -> TrayMutationResult {
