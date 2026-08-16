@@ -35,6 +35,10 @@ struct ClipboardPromptState: Equatable, Sendable {
     }
 
     mutating func didSaveCurrentClipboard() {
+        dismissCurrentPrompt()
+    }
+
+    mutating func dismissCurrentPrompt() {
         savedChangeCount = currentChangeCount
         isVisible = false
     }

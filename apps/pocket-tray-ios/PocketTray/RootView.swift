@@ -90,6 +90,7 @@ struct RootView: View {
     @State private var hasShownStorageWarning = false
     @State private var isReadingClipboard = false
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isPresentingPhotoPicker = false
     @State private var isLoadingDirectCapture = false
     @State private var isPresentingCamera = false
     @State private var isShowingCameraPermissionHelp = false
@@ -164,6 +165,12 @@ struct RootView: View {
             guard let selection else { return }
             Task { await loadSelectedPhoto(selection) }
         }
+        .photosPicker(
+            isPresented: $isPresentingPhotoPicker,
+            selection: $selectedPhoto,
+            matching: .images,
+            preferredItemEncoding: .current
+        )
         .overlay(alignment: .top) {
             if let feedback {
                 FeedbackToast(
@@ -349,11 +356,9 @@ struct RootView: View {
                         } label: {
                             Label("New Text", systemImage: "text.badge.plus")
                         }
-                        PhotosPicker(
-                            selection: $selectedPhoto,
-                            matching: .images,
-                            preferredItemEncoding: .current
-                        ) {
+                        Button {
+                            isPresentingPhotoPicker = true
+                        } label: {
                             Label("Choose Photo", systemImage: "photo.on.rectangle")
                         }
                         Button {
@@ -870,6 +875,7 @@ struct RootView: View {
     }
 
     private func directCaptureDidSave(_ item: TrayItem) async {
+        clipboardPromptState.dismissCurrentPrompt()
         showFeedback(
             "Saved to Pocket Tray",
             collectionItem: !snapshot.collections.isEmpty && item.collectionID == nil ? item : nil

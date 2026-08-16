@@ -83,6 +83,26 @@ final class SystemCaptureTests: XCTestCase {
         XCTAssertTrue(state.isVisible)
     }
 
+    func testSuccessfulDirectCaptureDismissesTheCurrentClipboardRevision() {
+        var state = ClipboardPromptState()
+        let oldClipboard = ClipboardAvailabilitySnapshot(
+            hasSupportedContent: true,
+            changeCount: 12
+        )
+
+        state.observe(oldClipboard)
+        XCTAssertTrue(state.isVisible)
+
+        state.dismissCurrentPrompt()
+        state.observe(oldClipboard)
+        XCTAssertFalse(state.isVisible)
+
+        state.observe(
+            ClipboardAvailabilitySnapshot(hasSupportedContent: true, changeCount: 13)
+        )
+        XCTAssertTrue(state.isVisible)
+    }
+
     @MainActor
     func testSystemClipboardReaderPreservesOriginalImageBytes() throws {
         let pasteboard = UIPasteboard.withUniqueName()
