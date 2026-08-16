@@ -5,6 +5,12 @@ import XCTest
 @testable import PocketTray
 
 final class PDFCaptureTests: XCTestCase {
+    @MainActor
+    private final class CommitRecorder {
+        private(set) var count = 0
+        func record() { count += 1 }
+    }
+
     private struct PDFShareProvider: ShareItemProviding {
         let payload: PDFPayload
         let loadError: ShareCaptureError?
@@ -30,9 +36,29 @@ final class PDFCaptureTests: XCTestCase {
         func loadText() async throws -> String { text }
     }
 
+    private struct URLShareProvider: ShareItemProviding {
+        let url: URL
+        var canLoadURL: Bool { true }
+        var canLoadText: Bool { false }
+        func loadURL() async throws -> URL { url }
+        func loadText() async throws -> String { throw ShareCaptureError.unsupported }
+    }
+
     private struct UnsupportedShareProvider: ShareItemProviding {
         var canLoadURL: Bool { false }
         var canLoadText: Bool { false }
+        func loadURL() async throws -> URL { throw ShareCaptureError.unsupported }
+        func loadText() async throws -> String { throw ShareCaptureError.unsupported }
+    }
+
+    private struct CancellationAwarePDFProvider: ShareItemProviding {
+        var canLoadPDF: Bool { true }
+        var canLoadURL: Bool { false }
+        var canLoadText: Bool { false }
+        func loadPDF() async throws -> PDFPayload {
+            try await Task.sleep(for: .seconds(30))
+            throw ShareCaptureError.unreadable
+        }
         func loadURL() async throws -> URL { throw ShareCaptureError.unsupported }
         func loadText() async throws -> String { throw ShareCaptureError.unsupported }
     }
@@ -82,6 +108,15 @@ final class PDFCaptureTests: XCTestCase {
     }
 
     func testPDFPayloadRejectsInvalidAndNonPDFContent() {
+        XCTAssertThrowsError(try PDFAssetFactory.makeWrite(
+            from: PDFPayload(
+                data: Data(),
+                typeIdentifier: UTType.pdf.identifier,
+                filename: "empty.pdf"
+            )
+        )) {
+            XCTAssertEqual($0 as? TrayAssetError, .invalidPDF)
+        }
         XCTAssertThrowsError(try PDFAssetFactory.makeWrite(
             from: PDFPayload(
                 data: Data("%PDF-broken".utf8),
@@ -214,11 +249,16 @@ final class PDFCaptureTests: XCTestCase {
     }
 
     func testMixedShareKeepsAcceptedInputsAndReportsEveryRejection() async throws {
-        let tray = Tray(repository: InMemoryTrayRepository())
+        let root = try temporaryRoot()
+        let tray = Tray(
+            repository: FileTrayRepository(fileURL: root.appending(path: "tray.json"))
+        )
         let pdf = onePagePDF
         let providers: [any ShareItemProviding] = [
             TextShareProvider(text: "Keep me"),
             UnsupportedShareProvider(),
+            TextShareProvider(text: "   "),
+            URLShareProvider(url: URL(fileURLWithPath: "/tmp/not-web")),
             PDFShareProvider(
                 payload: PDFPayload(
                     data: pdf,
@@ -241,8 +281,14 @@ final class PDFCaptureTests: XCTestCase {
         let recent = try await tray.recent()
 
         XCTAssertEqual(result.accepted.map(\.text), ["Keep me"])
-        XCTAssertEqual(result.rejected, [.unsupported, .unreadable, .oversized])
+        XCTAssertEqual(
+            result.rejected,
+            [.unsupported, .unreadable, .unsupported, .unreadable, .oversized]
+        )
         XCTAssertEqual(recent.map(\.id), result.accepted.map(\.id))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: root.appending(path: "assets").path)
+        )
     }
 
     func testNSItemProviderLoadsDataAndFileBackedPDFRepresentations() async throws {
@@ -274,6 +320,75 @@ final class PDFCaptureTests: XCTestCase {
         XCTAssertEqual(filePayload.data, pdf)
     }
 
+    func testNSItemProviderRejectsOversizedFileBeforePayloadCreation() async throws {
+        let root = try temporaryRoot()
+        let fileURL = root.appending(path: "oversized.pdf")
+        try Data(repeating: 0, count: 25_000_001).write(to: fileURL)
+        let provider = NSItemProvider()
+        provider.registerFileRepresentation(
+            forTypeIdentifier: UTType.pdf.identifier,
+            fileOptions: .openInPlace,
+            visibility: .all
+        ) { completion in
+            completion(fileURL, true, nil)
+            return nil
+        }
+
+        do {
+            _ = try await NSItemProviderShareItem(provider: provider).loadPDF()
+            XCTFail("Expected the provider boundary to reject the file")
+        } catch {
+            XCTAssertEqual(
+                error as? TrayAssetError,
+                .tooLarge(maximumBytes: 25_000_000)
+            )
+        }
+    }
+
+    func testRejectedProviderDoesNotEnterTheCommitPhase() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let recorder = await MainActor.run { CommitRecorder() }
+        let provider = PDFShareProvider(
+            payload: PDFPayload(
+                data: Data(repeating: 0, count: 25_000_001),
+                typeIdentifier: UTType.pdf.identifier,
+                filename: "too-large.pdf"
+            ),
+            loadError: nil
+        )
+
+        let result = try await ShareCapture(tray: tray).captureAll(
+            [provider],
+            willCommit: { recorder.record() }
+        )
+        let commitCount = await MainActor.run { recorder.count }
+
+        XCTAssertTrue(result.accepted.isEmpty)
+        XCTAssertEqual(result.rejected, [.oversized])
+        XCTAssertEqual(commitCount, 0)
+    }
+
+    func testProviderCancellationCancelsTheWholeBatch() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let task = Task {
+            try await ShareCapture(tray: tray).captureAll(
+                [CancellationAwarePDFProvider()]
+            )
+        }
+        try await Task.sleep(for: .milliseconds(10))
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected the batch to be cancelled")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+        let recent = try await tray.recent()
+        XCTAssertTrue(recent.isEmpty)
+    }
+
     func testPDFThumbnailIsBoundedAndOriginalRemainsExportable() async throws {
         let pdf = onePagePDF
         let tray = Tray(repository: InMemoryTrayRepository())
@@ -288,8 +403,9 @@ final class PDFCaptureTests: XCTestCase {
         )
         let loaded = try await TrayPDFLoader.load(for: item, tray: tray)
 
-        XCTAssertLessThanOrEqual(thumbnail.size.width, 80)
-        XCTAssertLessThanOrEqual(thumbnail.size.height, 100)
+        XCTAssertLessThanOrEqual(thumbnail.image.size.width, 80)
+        XCTAssertLessThanOrEqual(thumbnail.image.size.height, 100)
+        XCTAssertEqual(thumbnail.pageCount, 1)
         XCTAssertEqual(loaded.document.pageCount, 1)
         XCTAssertEqual(try Data(contentsOf: loaded.exportURL), pdf)
     }

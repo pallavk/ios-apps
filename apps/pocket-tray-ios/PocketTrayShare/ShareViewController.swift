@@ -85,12 +85,14 @@ final class ShareViewController: UIViewController {
                 let rejected = result.rejected.count
                 if saved == 0 {
                     statusLabel.text = "No items saved. \(rejected) couldn't be saved."
+                    actionButton.configuration?.title = "Close"
                 } else if rejected == 0 {
                     statusLabel.text = "Saved \(saved) \(saved == 1 ? "item" : "items") to Pocket Tray"
+                    actionButton.configuration?.title = "Done"
                 } else {
                     statusLabel.text = "Saved \(saved); \(rejected) couldn't be saved."
+                    actionButton.configuration?.title = "Done"
                 }
-                actionButton.configuration?.title = "Done"
             } catch is CancellationError {
                 return
             } catch {

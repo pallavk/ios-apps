@@ -599,7 +599,7 @@ private struct ItemEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                if item.kind != .image {
+                if item.asset == nil {
                     Section("Content") {
                         TextEditor(text: $text)
                             .frame(minHeight: 120)

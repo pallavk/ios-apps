@@ -7,7 +7,7 @@ enum ShareCaptureError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupported:
-            "Pocket Tray supports shared images, text, and web links."
+            "Pocket Tray supports shared images, PDFs, text, and web links."
         case .unreadable:
             "Pocket Tray couldn't read the shared item."
         }
@@ -74,15 +74,21 @@ struct ShareCapture: Sendable {
             } else {
                 throw ShareCaptureError.unsupported
             }
+        } catch is CancellationError {
+            throw CancellationError()
         } catch let error as ShareCaptureError {
             throw error
+        } catch let error as TrayAssetError {
+            throw error
         } catch {
+            try Task.checkCancellation()
             throw ShareCaptureError.unreadable
         }
 
+        let prepared = try tray.prepareCapture(content)
         try Task.checkCancellation()
         await willCommit()
-        return try await tray.capture(content)
+        return try await tray.commit(prepared)
     }
 
     func captureAll(
@@ -107,10 +113,20 @@ struct ShareCapture: Sendable {
                 }
             } catch let error as ShareCaptureError {
                 rejected.append(error == .unsupported ? .unsupported : .unreadable)
+            } catch let error as TrayError {
+                switch error {
+                case .unsupportedContent:
+                    rejected.append(.unsupported)
+                case .emptyText:
+                    rejected.append(.unreadable)
+                default:
+                    rejected.append(.storage)
+                }
             } catch {
                 rejected.append(.storage)
             }
         }
+        try Task.checkCancellation()
         return ShareCaptureBatchResult(accepted: accepted, rejected: rejected)
     }
 }

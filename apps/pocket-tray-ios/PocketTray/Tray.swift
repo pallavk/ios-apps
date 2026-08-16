@@ -318,6 +318,11 @@ protocol TextClipboard: Sendable {
     func copy(_ text: String) async throws
 }
 
+struct PreparedTrayCapture: Sendable {
+    let item: TrayItem
+    let assetWrite: TrayAssetWrite?
+}
+
 struct Tray: Sendable {
     private let repository: any TrayRepository
     private let now: @Sendable () -> Date
@@ -331,6 +336,10 @@ struct Tray: Sendable {
     }
 
     func capture(_ content: CaptureContent) async throws -> TrayItem {
+        try await commit(prepareCapture(content))
+    }
+
+    func prepareCapture(_ content: CaptureContent) throws -> PreparedTrayCapture {
         let kind: TrayItemKind
         let text: String
         let assetWrite: TrayAssetWrite?
@@ -386,9 +395,13 @@ struct Tray: Sendable {
             asset: assetWrite?.asset,
             expiresAt: capturedAt.addingTimeInterval(TrayRetention.recent)
         )
+        return PreparedTrayCapture(item: item, assetWrite: assetWrite)
+    }
+
+    func commit(_ prepared: PreparedTrayCapture) async throws -> TrayItem {
         try Task.checkCancellation()
         guard let saved = try await repository.apply(
-            .capture(item, assetWrite: assetWrite)
+            .capture(prepared.item, assetWrite: prepared.assetWrite)
         ).item else {
             throw TrayError.itemNotFound
         }

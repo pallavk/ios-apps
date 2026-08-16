@@ -6,6 +6,11 @@ struct LoadedTrayPDF: @unchecked Sendable {
     let exportURL: URL
 }
 
+struct LoadedTrayPDFThumbnail: @unchecked Sendable {
+    let image: UIImage
+    let pageCount: Int
+}
+
 private actor TrayPDFLoadGate {
     private var availablePermits = 2
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -47,16 +52,7 @@ enum TrayPDFLoader {
 
     static func load(for item: TrayItem, tray: Tray) async throws -> LoadedTrayPDF {
         try await gate.withPermit {
-            let resource = try await tray.assetResource(for: item)
-            try Task.checkCancellation()
-            guard
-                let document = PDFDocument(data: resource.data),
-                !document.isLocked,
-                document.pageCount > 0
-            else {
-                throw TrayAssetError.corrupt
-            }
-            return LoadedTrayPDF(document: document, exportURL: resource.exportURL)
+            try await loadWithoutPermit(for: item, tray: tray)
         }
     }
 
@@ -64,13 +60,34 @@ enum TrayPDFLoader {
         for item: TrayItem,
         tray: Tray,
         size: CGSize
-    ) async throws -> UIImage {
-        let loaded = try await load(for: item, tray: tray)
-        guard let page = loaded.document.page(at: 0) else {
+    ) async throws -> LoadedTrayPDFThumbnail {
+        try await gate.withPermit {
+            let loaded = try await loadWithoutPermit(for: item, tray: tray)
+            guard let page = loaded.document.page(at: 0) else {
+                throw TrayAssetError.corrupt
+            }
+            try Task.checkCancellation()
+            return LoadedTrayPDFThumbnail(
+                image: page.thumbnail(of: size, for: .cropBox),
+                pageCount: loaded.document.pageCount
+            )
+        }
+    }
+
+    private static func loadWithoutPermit(
+        for item: TrayItem,
+        tray: Tray
+    ) async throws -> LoadedTrayPDF {
+        let resource = try await tray.assetResource(for: item)
+        try Task.checkCancellation()
+        guard
+            let document = PDFDocument(data: resource.data),
+            !document.isLocked,
+            document.pageCount > 0
+        else {
             throw TrayAssetError.corrupt
         }
-        try Task.checkCancellation()
-        return page.thumbnail(of: size, for: .cropBox)
+        return LoadedTrayPDF(document: document, exportURL: resource.exportURL)
     }
 }
 
@@ -80,6 +97,7 @@ struct TrayPDFRow: View {
     let tray: Tray
 
     @State private var thumbnail: UIImage?
+    @State private var pageCount: Int?
     @State private var isUnavailable = false
 
     var body: some View {
@@ -118,6 +136,11 @@ struct TrayPDFRow: View {
                 if let note = item.note {
                     Text(note).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 }
+                if let pageCount {
+                    Text("\(pageCount) \(pageCount == 1 ? "page" : "pages")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if let collectionName {
                     Label(collectionName, systemImage: "folder")
                         .font(.caption)
@@ -137,11 +160,13 @@ struct TrayPDFRow: View {
         .accessibilityElement(children: .combine)
         .task(id: item.asset?.digest) {
             do {
-                thumbnail = try await TrayPDFLoader.thumbnail(
+                let loadedThumbnail = try await TrayPDFLoader.thumbnail(
                     for: item,
                     tray: tray,
                     size: CGSize(width: 160, height: 200)
                 )
+                thumbnail = loadedThumbnail.image
+                pageCount = loadedThumbnail.pageCount
             } catch {
                 isUnavailable = true
             }

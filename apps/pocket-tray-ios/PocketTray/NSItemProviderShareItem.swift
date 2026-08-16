@@ -1,5 +1,35 @@
+import Foundation
 import UIKit
 import UniformTypeIdentifiers
+
+private final class ProviderProgressBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var progress: Progress?
+    private var isCancelled = false
+
+    func install(_ progress: Progress) {
+        lock.lock()
+        self.progress = progress
+        let shouldCancel = isCancelled
+        lock.unlock()
+        if shouldCancel { progress.cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let progress = progress
+        lock.unlock()
+        progress?.cancel()
+    }
+
+    var cancelled: Bool {
+        lock.lock()
+        let value = isCancelled
+        lock.unlock()
+        return value
+    }
+}
 
 final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProviding {
     private let provider: NSItemProvider
@@ -27,18 +57,7 @@ final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProviding {
         guard let typeIdentifier = imageTypeIdentifier else {
             throw ShareCaptureError.unsupported
         }
-        let data = try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<Data, Error>) in
-            provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: ShareCaptureError.unreadable)
-                }
-            }
-        }
+        let data = try await loadBoundedFileRepresentation(forTypeIdentifier: typeIdentifier)
         return ImagePayload(
             data: data,
             typeIdentifier: typeIdentifier,
@@ -50,7 +69,7 @@ final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProviding {
         guard canLoadPDF else {
             throw ShareCaptureError.unsupported
         }
-        let data = try await loadDataRepresentation(
+        let data = try await loadBoundedFileRepresentation(
             forTypeIdentifier: UTType.pdf.identifier
         )
         return PDFPayload(
@@ -107,17 +126,62 @@ final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProviding {
         } ?? imageIdentifiers.first
     }
 
-    private func loadDataRepresentation(forTypeIdentifier typeIdentifier: String) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: ShareCaptureError.unreadable)
+    private func loadBoundedFileRepresentation(
+        forTypeIdentifier typeIdentifier: String
+    ) async throws -> Data {
+        let progressBox = ProviderProgressBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let progress = provider.loadFileRepresentation(
+                    forTypeIdentifier: typeIdentifier
+                ) { url, error in
+                    do {
+                        if let error { throw error }
+                        guard let url else { throw ShareCaptureError.unreadable }
+                        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+                        if let fileSize = values.fileSize,
+                           fileSize > ImageAssetFactory.maximumByteCount {
+                            throw TrayAssetError.tooLarge(
+                                maximumBytes: ImageAssetFactory.maximumByteCount
+                            )
+                        }
+                        let data = try self.readBoundedData(
+                            from: url,
+                            progressBox: progressBox
+                        )
+                        continuation.resume(returning: data)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
+                progressBox.install(progress)
             }
+        } onCancel: {
+            progressBox.cancel()
         }
+    }
+
+    private func readBoundedData(
+        from url: URL,
+        progressBox: ProviderProgressBox
+    ) throws -> Data {
+        let maximum = ImageAssetFactory.maximumByteCount
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        var data = Data()
+        data.reserveCapacity(maximum + 1)
+        while data.count <= maximum {
+            if progressBox.cancelled { throw CancellationError() }
+            let remaining = maximum + 1 - data.count
+            guard
+                let chunk = try handle.read(upToCount: min(64 * 1_024, remaining)),
+                !chunk.isEmpty
+            else {
+                return data
+            }
+            data.append(chunk)
+        }
+        throw TrayAssetError.tooLarge(maximumBytes: maximum)
     }
 }
