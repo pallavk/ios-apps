@@ -41,6 +41,7 @@ extension ShareItemProviding {
 enum ShareCaptureRejection: Equatable, Sendable {
     case oversized
     case storage
+    case sensitive
     case unreadable
     case unsupported
 }
@@ -115,6 +116,8 @@ struct ShareCapture: Sendable {
                 rejected.append(error == .unsupported ? .unsupported : .unreadable)
             } catch let error as TrayError {
                 switch error {
+                case .sensitiveContentRequiresAcknowledgment:
+                    rejected.append(.sensitive)
                 case .unsupportedContent:
                     rejected.append(.unsupported)
                 case .emptyText:

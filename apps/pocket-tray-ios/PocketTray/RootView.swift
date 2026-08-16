@@ -59,6 +59,7 @@ struct RootView: View {
     @State private var presentedSheet: SheetDestination?
     @State private var pendingCollectionDeletion: TrayCollection?
     @State private var pendingPermanentDeletion: TrayItem?
+    @State private var pendingSensitiveCapture: PreparedTrayCapture?
 
     init(tray: Tray, clipboard: any TextClipboard = SystemTextClipboard()) {
         self.tray = tray
@@ -108,6 +109,21 @@ struct RootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "Please try again.")
+        }
+        .confirmationDialog(
+            "Save possible sensitive content?",
+            isPresented: isConfirmingSensitiveCapture,
+            titleVisibility: .visible
+        ) {
+            Button("Save Anyway") {
+                if let prepared = pendingSensitiveCapture {
+                    pendingSensitiveCapture = nil
+                    commit(prepared, acknowledgingSensitiveContent: true)
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingSensitiveCapture = nil }
+        } message: {
+            Text(sensitiveCaptureWarning)
         }
         .confirmationDialog(
             "Delete this object permanently?",
@@ -420,6 +436,21 @@ struct RootView: View {
         )
     }
 
+    private var isConfirmingSensitiveCapture: Binding<Bool> {
+        Binding(
+            get: { pendingSensitiveCapture != nil },
+            set: { if !$0 { pendingSensitiveCapture = nil } }
+        )
+    }
+
+    private var sensitiveCaptureWarning: String {
+        guard let reasons = pendingSensitiveCapture?.item.sensitivity?.reasons else {
+            return "Pocket Tray found a possible secret."
+        }
+        let labels = reasons.sorted { $0.rawValue < $1.rawValue }.map(\.warningLabel)
+        return "Pocket Tray found a possible \(labels.joined(separator: " or ")). Save it only if you intend to keep it here."
+    }
+
     private var isConfirmingCollectionDeletion: Binding<Bool> {
         Binding(
             get: { pendingCollectionDeletion != nil },
@@ -437,8 +468,27 @@ struct RootView: View {
             errorMessage = TrayError.emptyText.localizedDescription
             return
         }
+        do {
+            let prepared = try tray.prepareCapture(.text(text))
+            if prepared.item.protectsSensitivePreview {
+                pendingSensitiveCapture = prepared
+            } else {
+                commit(prepared)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func commit(
+        _ prepared: PreparedTrayCapture,
+        acknowledgingSensitiveContent: Bool = false
+    ) {
         perform("Saved to Pocket Tray") {
-            _ = try await tray.capture(.text(text))
+            _ = try await tray.commit(
+                prepared,
+                acknowledgingSensitiveContent: acknowledgingSensitiveContent
+            )
         }
     }
 

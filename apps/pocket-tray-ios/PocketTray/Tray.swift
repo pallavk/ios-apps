@@ -5,6 +5,7 @@ enum TrayError: Error, Equatable, LocalizedError {
     case emptyCollectionName
     case emptyText
     case itemNotFound
+    case sensitiveContentRequiresAcknowledgment([SensitiveContentReason])
     case unsupportedContent
 
     var errorDescription: String? {
@@ -17,6 +18,8 @@ enum TrayError: Error, Equatable, LocalizedError {
             "The clipboard does not contain text to save."
         case .itemNotFound:
             "That Pocket Tray object is no longer available."
+        case let .sensitiveContentRequiresAcknowledgment(reasons):
+            "This may contain a \(reasons.map(\.warningLabel).joined(separator: " or ")). Review it before saving."
         case .unsupportedContent:
             "That clipboard content is not supported yet."
         }
@@ -60,6 +63,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
     private(set) var collectionID: UUID?
     private(set) var asset: TrayAsset?
     private(set) var analysis: ContentAnalysis?
+    private(set) var sensitivity: SensitivityAssessment?
     private(set) var deduplicationKeys: Set<String>
     private(set) var expiresAt: Date?
     private(set) var state: TrayItemState
@@ -77,6 +81,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         collectionID: UUID? = nil,
         asset: TrayAsset? = nil,
         analysis: ContentAnalysis? = nil,
+        sensitivity: SensitivityAssessment? = nil,
         deduplicationKeys: Set<String>? = nil,
         expiresAt: Date? = nil,
         state: TrayItemState = .recent,
@@ -93,6 +98,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         self.collectionID = collectionID
         self.asset = asset
         self.analysis = analysis
+        self.sensitivity = sensitivity
         self.deduplicationKeys = deduplicationKeys ?? [asset?.digest ?? text]
         self.expiresAt = expiresAt
         self.state = state
@@ -111,6 +117,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         case collectionID
         case asset
         case analysis
+        case sensitivity
         case deduplicationKeys
         case deduplicationKey
         case expiresAt
@@ -131,6 +138,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         collectionID = try container.decodeIfPresent(UUID.self, forKey: .collectionID)
         asset = try container.decodeIfPresent(TrayAsset.self, forKey: .asset)
         analysis = try container.decodeIfPresent(ContentAnalysis.self, forKey: .analysis)
+        sensitivity = try container.decodeIfPresent(SensitivityAssessment.self, forKey: .sensitivity)
         if let storedKeys = try container.decodeIfPresent(Set<String>.self, forKey: .deduplicationKeys) {
             deduplicationKeys = storedKeys.union([asset?.digest ?? text])
         } else if let legacyKey = try container.decodeIfPresent(String.self, forKey: .deduplicationKey) {
@@ -163,6 +171,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         try container.encodeIfPresent(collectionID, forKey: .collectionID)
         try container.encodeIfPresent(asset, forKey: .asset)
         try container.encodeIfPresent(analysis, forKey: .analysis)
+        try container.encodeIfPresent(sensitivity, forKey: .sensitivity)
         try container.encode(deduplicationKeys, forKey: .deduplicationKeys)
         try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
         try container.encode(state, forKey: .state)
@@ -179,6 +188,9 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         updated.expiresAt = isPinned ? nil : candidate.expiresAt
         updated.state = .recent
         updated.trashedAt = nil
+        if updated.sensitivity == nil {
+            updated.sensitivity = candidate.sensitivity
+        }
         return updated
     }
 
@@ -193,6 +205,7 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         if asset == nil {
             if updated.kind != edits.kind || updated.text != edits.text {
                 updated.analysis = nil
+                updated.sensitivity = edits.sensitivity
             }
             updated.kind = edits.kind
             updated.text = edits.text
@@ -204,10 +217,27 @@ struct TrayItem: Codable, Equatable, Identifiable, Sendable {
         return updated
     }
 
-    func settingAnalysis(_ analysis: ContentAnalysis) -> TrayItem {
+    func settingAnalysis(
+        _ analysis: ContentAnalysis,
+        sensitivity: SensitivityAssessment?
+    ) -> TrayItem {
         var updated = self
         updated.analysis = analysis
+        if updated.sensitivity?.isOverridden != true, let sensitivity {
+            updated.sensitivity = sensitivity
+        }
         return updated
+    }
+
+    func settingSensitivityOverridden(_ isOverridden: Bool) -> TrayItem? {
+        guard let sensitivity else { return nil }
+        var updated = self
+        updated.sensitivity = sensitivity.settingOverridden(isOverridden)
+        return updated
+    }
+
+    var protectsSensitivePreview: Bool {
+        sensitivity != nil && sensitivity?.isOverridden == false
     }
 
     var analysisSourceKey: String {
@@ -253,6 +283,23 @@ struct TrayItemEdits: Equatable, Sendable {
     let title: String?
     let note: String?
     let collectionID: UUID?
+    let sensitivity: SensitivityAssessment?
+
+    init(
+        kind: TrayItemKind,
+        text: String,
+        title: String?,
+        note: String?,
+        collectionID: UUID?,
+        sensitivity: SensitivityAssessment? = nil
+    ) {
+        self.kind = kind
+        self.text = text
+        self.title = title
+        self.note = note
+        self.collectionID = collectionID
+        self.sensitivity = sensitivity
+    }
 }
 
 struct TrayCollection: Codable, Equatable, Identifiable, Sendable {
@@ -288,7 +335,8 @@ enum TrayMutation: Sendable {
     case assign(UUID, UUID?, Date)
     case renameCollection(UUID, String)
     case deleteCollection(UUID)
-    case setAnalysis(UUID, sourceKey: String, ContentAnalysis)
+    case setAnalysis(UUID, sourceKey: String, ContentAnalysis, SensitivityAssessment?)
+    case setSensitivityOverridden(UUID, Bool)
 }
 
 enum TrayMutationResult: Sendable {
@@ -348,17 +396,20 @@ struct Tray: Sendable {
     private let now: @Sendable () -> Date
     private let analyzer: any ContentAnalyzing
     private let analysisScheduler: ContentAnalysisScheduler
+    private let sensitiveContentClassifier: any SensitiveContentClassifying
 
     init(
         repository: any TrayRepository,
         now: @escaping @Sendable () -> Date = Date.init,
         analyzer: any ContentAnalyzing = UnavailableContentAnalyzer(),
-        analysisScheduler: ContentAnalysisScheduler = ContentAnalysisScheduler()
+        analysisScheduler: ContentAnalysisScheduler = ContentAnalysisScheduler(),
+        sensitiveContentClassifier: any SensitiveContentClassifying = DeterministicSensitiveContentClassifier()
     ) {
         self.repository = repository
         self.now = now
         self.analyzer = analyzer
         self.analysisScheduler = analysisScheduler
+        self.sensitiveContentClassifier = sensitiveContentClassifier
     }
 
     func capture(_ content: CaptureContent) async throws -> TrayItem {
@@ -419,13 +470,26 @@ struct Tray: Sendable {
             text: text,
             capturedAt: capturedAt,
             asset: assetWrite?.asset,
+            sensitivity: assessment(for: text),
             expiresAt: capturedAt.addingTimeInterval(TrayRetention.recent)
         )
         return PreparedTrayCapture(item: item, assetWrite: assetWrite)
     }
 
-    func commit(_ prepared: PreparedTrayCapture) async throws -> TrayItem {
+    func commit(
+        _ prepared: PreparedTrayCapture,
+        acknowledgingSensitiveContent: Bool = false
+    ) async throws -> TrayItem {
         try Task.checkCancellation()
+        if
+            let assessment = prepared.item.sensitivity,
+            !assessment.isOverridden,
+            !acknowledgingSensitiveContent
+        {
+            throw TrayError.sensitiveContentRequiresAcknowledgment(
+                assessment.reasons.sorted { $0.rawValue < $1.rawValue }
+            )
+        }
         guard let saved = try await repository.apply(
             .capture(prepared.item, assetWrite: prepared.assetWrite)
         ).item else {
@@ -550,6 +614,18 @@ struct Tray: Sendable {
         }
     }
 
+    func setSensitivityOverridden(
+        _ id: UUID,
+        to isOverridden: Bool
+    ) async throws -> TrayItem {
+        guard let item = try await repository.apply(
+            .setSensitivityOverridden(id, isOverridden)
+        ).item else {
+            throw TrayError.itemNotFound
+        }
+        return item
+    }
+
     func edit(
         _ id: UUID,
         text: String,
@@ -565,7 +641,8 @@ struct Tray: Sendable {
             text: text,
             title: Self.nonBlank(title),
             note: Self.nonBlank(note),
-            collectionID: collectionID
+            collectionID: collectionID,
+            sensitivity: assessment(for: text)
         )
         guard let item = try await repository.apply(.edit(id, edits, now())).item else {
             throw TrayError.itemNotFound
@@ -603,12 +680,23 @@ struct Tray: Sendable {
                     assetTypeIdentifier: assetTypeIdentifier
                 )
             )
+            let sensitivity = result.searchableText.flatMap(assessment(for:))
             _ = try await repository.apply(
-                .setAnalysis(item.id, sourceKey: item.analysisSourceKey, result)
+                .setAnalysis(
+                    item.id,
+                    sourceKey: item.analysisSourceKey,
+                    result,
+                    sensitivity
+                )
             )
         } catch {
             // Intelligence is best-effort. The durable original remains usable.
         }
+    }
+
+    private func assessment(for text: String) -> SensitivityAssessment? {
+        let reasons = sensitiveContentClassifier.reasons(in: text)
+        return reasons.isEmpty ? nil : SensitivityAssessment(reasons: reasons)
     }
 
     private static func nonBlank(_ value: String?) -> String? {
@@ -694,20 +782,40 @@ extension TrayStore {
             .collection(renameCollection(id, to: name))
         case let .deleteCollection(id):
             .success(deleteCollection(id))
-        case let .setAnalysis(id, sourceKey, analysis):
-            .item(setAnalysis(analysis, for: id, sourceKey: sourceKey))
+        case let .setAnalysis(id, sourceKey, analysis, sensitivity):
+            .item(setAnalysis(
+                analysis,
+                sensitivity: sensitivity,
+                for: id,
+                sourceKey: sourceKey
+            ))
+        case let .setSensitivityOverridden(id, isOverridden):
+            .item(setSensitivityOverridden(isOverridden, for: id))
         }
     }
 
     private mutating func setAnalysis(
         _ analysis: ContentAnalysis,
+        sensitivity: SensitivityAssessment?,
         for id: UUID,
         sourceKey: String
     ) -> TrayItem? {
         guard let index = items.firstIndex(where: {
             $0.id == id && $0.analysisSourceKey == sourceKey
         }) else { return nil }
-        let updated = items[index].settingAnalysis(analysis)
+        let updated = items[index].settingAnalysis(analysis, sensitivity: sensitivity)
+        items[index] = updated
+        return updated
+    }
+
+    private mutating func setSensitivityOverridden(
+        _ isOverridden: Bool,
+        for id: UUID
+    ) -> TrayItem? {
+        guard
+            let index = items.firstIndex(where: { $0.id == id }),
+            let updated = items[index].settingSensitivityOverridden(isOverridden)
+        else { return nil }
         items[index] = updated
         return updated
     }

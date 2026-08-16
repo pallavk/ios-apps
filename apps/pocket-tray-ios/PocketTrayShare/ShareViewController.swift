@@ -83,11 +83,18 @@ final class ShareViewController: UIViewController {
                 actionButton.isEnabled = true
                 let saved = result.accepted.count
                 let rejected = result.rejected.count
-                if saved == 0 {
+                let sensitive = result.rejected.count { $0 == .sensitive }
+                if saved == 0, sensitive > 0 {
+                    statusLabel.text = "Possible sensitive content wasn't saved. Paste it in Pocket Tray to review it first."
+                    actionButton.configuration?.title = "Close"
+                } else if saved == 0 {
                     statusLabel.text = "No items saved. \(rejected) couldn't be saved."
                     actionButton.configuration?.title = "Close"
                 } else if rejected == 0 {
                     statusLabel.text = "Saved \(saved) \(saved == 1 ? "item" : "items") to Pocket Tray"
+                    actionButton.configuration?.title = "Done"
+                } else if sensitive > 0 {
+                    statusLabel.text = "Saved \(saved). \(sensitive) possible sensitive \(sensitive == 1 ? "item needs" : "items need") in-app review."
                     actionButton.configuration?.title = "Done"
                 } else {
                     statusLabel.text = "Saved \(saved); \(rejected) couldn't be saved."
