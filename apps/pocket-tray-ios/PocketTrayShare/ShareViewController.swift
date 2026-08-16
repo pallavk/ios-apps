@@ -52,9 +52,15 @@ final class ShareViewController: UIViewController {
 
     private func captureSharedItem() {
         guard
-            let item = extensionContext?.inputItems.first as? NSExtensionItem,
-            let provider = item.attachments?.first
+            let inputItems = extensionContext?.inputItems as? [NSExtensionItem]
         else {
+            showFailure(ShareCaptureError.unsupported)
+            return
+        }
+        let providers = inputItems
+            .flatMap { $0.attachments ?? [] }
+            .map(NSItemProviderShareItem.init(provider:))
+        guard !providers.isEmpty else {
             showFailure(ShareCaptureError.unsupported)
             return
         }
@@ -64,8 +70,8 @@ final class ShareViewController: UIViewController {
             do {
                 let repository = try FileTrayRepository.sharedContainer()
                 let tray = Tray(repository: repository)
-                _ = try await ShareCapture(tray: tray).capture(
-                    NSItemProviderShareItem(provider: provider),
+                let result = try await ShareCapture(tray: tray).captureAll(
+                    providers,
                     willCommit: { [weak self] in
                         guard let self else { return }
                         captureState = .committing
@@ -75,7 +81,15 @@ final class ShareViewController: UIViewController {
                 try Task.checkCancellation()
                 captureState = .finished
                 actionButton.isEnabled = true
-                statusLabel.text = "Saved to Pocket Tray"
+                let saved = result.accepted.count
+                let rejected = result.rejected.count
+                if saved == 0 {
+                    statusLabel.text = "No items saved. \(rejected) couldn't be saved."
+                } else if rejected == 0 {
+                    statusLabel.text = "Saved \(saved) \(saved == 1 ? "item" : "items") to Pocket Tray"
+                } else {
+                    statusLabel.text = "Saved \(saved); \(rejected) couldn't be saved."
+                }
                 actionButton.configuration?.title = "Done"
             } catch is CancellationError {
                 return

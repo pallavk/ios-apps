@@ -10,6 +10,10 @@ final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProviding {
 
     var canLoadImage: Bool { imageTypeIdentifier != nil }
 
+    var canLoadPDF: Bool {
+        provider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier)
+    }
+
     var canLoadURL: Bool {
         provider.hasItemConformingToTypeIdentifier(UTType.url.identifier)
     }
@@ -38,6 +42,20 @@ final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProviding {
         return ImagePayload(
             data: data,
             typeIdentifier: typeIdentifier,
+            filename: provider.suggestedName
+        )
+    }
+
+    func loadPDF() async throws -> PDFPayload {
+        guard canLoadPDF else {
+            throw ShareCaptureError.unsupported
+        }
+        let data = try await loadDataRepresentation(
+            forTypeIdentifier: UTType.pdf.identifier
+        )
+        return PDFPayload(
+            data: data,
+            typeIdentifier: UTType.pdf.identifier,
             filename: provider.suggestedName
         )
     }
@@ -87,5 +105,19 @@ final class NSItemProviderShareItem: @unchecked Sendable, ShareItemProviding {
             identifier != UTType.image.identifier
                 && UTType(identifier)?.preferredFilenameExtension != nil
         } ?? imageIdentifiers.first
+    }
+
+    private func loadDataRepresentation(forTypeIdentifier typeIdentifier: String) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: ShareCaptureError.unreadable)
+                }
+            }
+        }
     }
 }

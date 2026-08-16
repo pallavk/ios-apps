@@ -5,6 +5,38 @@ import XCTest
 @testable import PocketTray
 
 final class PDFCaptureTests: XCTestCase {
+    private struct PDFShareProvider: ShareItemProviding {
+        let payload: PDFPayload
+        let loadError: ShareCaptureError?
+
+        var canLoadPDF: Bool { true }
+        var canLoadURL: Bool { false }
+        var canLoadText: Bool { false }
+
+        func loadPDF() async throws -> PDFPayload {
+            if let loadError { throw loadError }
+            return payload
+        }
+
+        func loadURL() async throws -> URL { throw ShareCaptureError.unsupported }
+        func loadText() async throws -> String { throw ShareCaptureError.unsupported }
+    }
+
+    private struct TextShareProvider: ShareItemProviding {
+        let text: String
+        var canLoadURL: Bool { false }
+        var canLoadText: Bool { true }
+        func loadURL() async throws -> URL { throw ShareCaptureError.unsupported }
+        func loadText() async throws -> String { text }
+    }
+
+    private struct UnsupportedShareProvider: ShareItemProviding {
+        var canLoadURL: Bool { false }
+        var canLoadText: Bool { false }
+        func loadURL() async throws -> URL { throw ShareCaptureError.unsupported }
+        func loadText() async throws -> String { throw ShareCaptureError.unsupported }
+    }
+
     private var onePagePDF: Data {
         let renderer = UIGraphicsPDFRenderer(
             bounds: CGRect(x: 0, y: 0, width: 240, height: 320)
@@ -136,6 +168,110 @@ final class PDFCaptureTests: XCTestCase {
         XCTAssertTrue(recaptured.isPinned)
         let recent = try await secondTray.recent()
         XCTAssertEqual(recent.count, 1)
+    }
+
+    func testShareCaptureLoadsPDFRepresentation() async throws {
+        let pdf = onePagePDF
+        let tray = Tray(repository: InMemoryTrayRepository())
+
+        let item = try await ShareCapture(tray: tray).capture(
+            PDFShareProvider(
+                payload: PDFPayload(
+                    data: pdf,
+                    typeIdentifier: UTType.pdf.identifier,
+                    filename: "shared.pdf"
+                ),
+                loadError: nil
+            )
+        )
+
+        XCTAssertEqual(item.kind, .pdf)
+        let resource = try await tray.assetResource(for: item)
+        XCTAssertEqual(resource.data, pdf)
+    }
+
+    func testMultiObjectShareCreatesOneObjectPerAcceptedInputInOrder() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let pdf = onePagePDF
+        let providers: [any ShareItemProviding] = [
+            PDFShareProvider(
+                payload: PDFPayload(
+                    data: pdf,
+                    typeIdentifier: UTType.pdf.identifier,
+                    filename: "first.pdf"
+                ),
+                loadError: nil
+            ),
+            TextShareProvider(text: "Second object")
+        ]
+
+        let result = try await ShareCapture(tray: tray).captureAll(providers)
+        let recent = try await tray.recent()
+
+        XCTAssertEqual(result.accepted.map(\.kind), [.pdf, .text])
+        XCTAssertTrue(result.rejected.isEmpty)
+        XCTAssertEqual(Set(recent.map(\.id)), Set(result.accepted.map(\.id)))
+    }
+
+    func testMixedShareKeepsAcceptedInputsAndReportsEveryRejection() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let pdf = onePagePDF
+        let providers: [any ShareItemProviding] = [
+            TextShareProvider(text: "Keep me"),
+            UnsupportedShareProvider(),
+            PDFShareProvider(
+                payload: PDFPayload(
+                    data: pdf,
+                    typeIdentifier: UTType.pdf.identifier,
+                    filename: "unreadable.pdf"
+                ),
+                loadError: .unreadable
+            ),
+            PDFShareProvider(
+                payload: PDFPayload(
+                    data: Data(repeating: 0, count: 25_000_001),
+                    typeIdentifier: UTType.pdf.identifier,
+                    filename: "large.pdf"
+                ),
+                loadError: nil
+            )
+        ]
+
+        let result = try await ShareCapture(tray: tray).captureAll(providers)
+        let recent = try await tray.recent()
+
+        XCTAssertEqual(result.accepted.map(\.text), ["Keep me"])
+        XCTAssertEqual(result.rejected, [.unsupported, .unreadable, .oversized])
+        XCTAssertEqual(recent.map(\.id), result.accepted.map(\.id))
+    }
+
+    func testNSItemProviderLoadsDataAndFileBackedPDFRepresentations() async throws {
+        let pdf = onePagePDF
+        let dataProvider = NSItemProvider()
+        dataProvider.registerDataRepresentation(
+            forTypeIdentifier: UTType.pdf.identifier,
+            visibility: .all
+        ) { completion in
+            completion(pdf, nil)
+            return nil
+        }
+        let dataPayload = try await NSItemProviderShareItem(provider: dataProvider).loadPDF()
+        XCTAssertEqual(dataPayload.data, pdf)
+
+        let root = try temporaryRoot()
+        let fileURL = root.appending(path: "file-backed.pdf")
+        try pdf.write(to: fileURL)
+        let fileProvider = NSItemProvider()
+        fileProvider.registerFileRepresentation(
+            forTypeIdentifier: UTType.pdf.identifier,
+            fileOptions: .openInPlace,
+            visibility: .all
+        ) { completion in
+            completion(fileURL, true, nil)
+            return nil
+        }
+        let filePayload = try await NSItemProviderShareItem(provider: fileProvider).loadPDF()
+        XCTAssertEqual(filePayload.data, pdf)
     }
 
     private func temporaryRoot() throws -> URL {
