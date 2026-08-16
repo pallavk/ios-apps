@@ -16,13 +16,37 @@ struct SystemClipboardContentReader: ClipboardContentReading {
 }
 
 protocol ClipboardAvailabilityChecking: Sendable {
-    func hasSupportedContent() async -> Bool
+    func currentSnapshot() async -> ClipboardAvailabilitySnapshot
+}
+
+struct ClipboardAvailabilitySnapshot: Equatable, Sendable {
+    let hasSupportedContent: Bool
+    let changeCount: Int
+}
+
+struct ClipboardPromptState: Equatable, Sendable {
+    private(set) var isVisible = false
+    private(set) var currentChangeCount: Int?
+    private var savedChangeCount: Int?
+
+    mutating func observe(_ snapshot: ClipboardAvailabilitySnapshot) {
+        currentChangeCount = snapshot.changeCount
+        isVisible = snapshot.hasSupportedContent && snapshot.changeCount != savedChangeCount
+    }
+
+    mutating func didSaveCurrentClipboard() {
+        savedChangeCount = currentChangeCount
+        isVisible = false
+    }
 }
 
 struct SystemClipboardAvailabilityChecker: ClipboardAvailabilityChecking {
-    func hasSupportedContent() async -> Bool {
+    func currentSnapshot() async -> ClipboardAvailabilitySnapshot {
         await MainActor.run {
-            SystemClipboardSupport.isAvailable(in: .general)
+            ClipboardAvailabilitySnapshot(
+                hasSupportedContent: SystemClipboardSupport.isAvailable(in: .general),
+                changeCount: UIPasteboard.general.changeCount
+            )
         }
     }
 }

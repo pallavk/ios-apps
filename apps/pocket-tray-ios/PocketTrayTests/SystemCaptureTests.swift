@@ -56,6 +56,23 @@ final class SystemCaptureTests: XCTestCase {
         XCTAssertEqual(outcome, .unsupported)
     }
 
+    func testClipboardPromptStaysHiddenAfterSavingUntilClipboardChanges() {
+        var state = ClipboardPromptState()
+        let initial = ClipboardAvailabilitySnapshot(hasSupportedContent: true, changeCount: 7)
+
+        state.observe(initial)
+        XCTAssertTrue(state.isVisible)
+
+        state.didSaveCurrentClipboard()
+        XCTAssertFalse(state.isVisible)
+
+        state.observe(initial)
+        XCTAssertFalse(state.isVisible)
+
+        state.observe(ClipboardAvailabilitySnapshot(hasSupportedContent: true, changeCount: 8))
+        XCTAssertTrue(state.isVisible)
+    }
+
     @MainActor
     func testSystemClipboardReaderPreservesOriginalImageBytes() throws {
         let pasteboard = UIPasteboard.withUniqueName()

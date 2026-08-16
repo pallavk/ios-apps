@@ -80,8 +80,9 @@ struct RootView: View {
     @State private var pendingCollectionDeletion: TrayCollection?
     @State private var pendingPermanentDeletion: TrayItem?
     @State private var pendingSensitiveCapture: PreparedTrayCapture?
+    @State private var pendingClipboardSaveChangeCount: Int?
     @State private var sensitivePreviewSession = SensitivePreviewSession()
-    @State private var hasSupportedClipboardContent = false
+    @State private var clipboardPromptState = ClipboardPromptState()
     @State private var storageWarningMessage: String?
     @State private var hasShownStorageWarning = false
     @State private var isReadingClipboard = false
@@ -242,7 +243,10 @@ struct RootView: View {
                     commit(prepared, acknowledgingSensitiveContent: true)
                 }
             }
-            Button("Cancel", role: .cancel) { pendingSensitiveCapture = nil }
+            Button("Cancel", role: .cancel) {
+                pendingSensitiveCapture = nil
+                pendingClipboardSaveChangeCount = nil
+            }
         } message: {
             Text(sensitiveCaptureWarning)
         }
@@ -315,7 +319,7 @@ struct RootView: View {
 
     @ViewBuilder
     private func sectionContent(_ section: Section, items: [TrayItem]) -> some View {
-        if section == .recent, hasSupportedClipboardContent {
+        if section == .recent, clipboardPromptState.isVisible {
             VStack(spacing: 0) {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) {
@@ -554,6 +558,7 @@ struct RootView: View {
                 commit(prepared)
             }
         } catch {
+            pendingClipboardSaveChangeCount = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -572,9 +577,15 @@ struct RootView: View {
                     "Saved to Pocket Tray",
                     collectionItem: snapshot.collections.isEmpty ? nil : saved
                 )
+                if pendingClipboardSaveChangeCount != nil {
+                    clipboardPromptState.didSaveCurrentClipboard()
+                    pendingClipboardSaveChangeCount = nil
+                }
                 await reload()
                 await refreshStorageWarning()
+                await refreshClipboardAvailability()
             } catch {
+                pendingClipboardSaveChangeCount = nil
                 errorMessage = error.localizedDescription
             }
         }
@@ -700,7 +711,7 @@ struct RootView: View {
     }
 
     private func refreshClipboardAvailability() async {
-        hasSupportedClipboardContent = await clipboardAvailabilityChecker.hasSupportedContent()
+        clipboardPromptState.observe(await clipboardAvailabilityChecker.currentSnapshot())
     }
 
     private var isShowingStorageWarning: Binding<Bool> {
@@ -728,6 +739,7 @@ struct RootView: View {
     private func captureCurrentClipboard() {
         guard !isReadingClipboard else { return }
         isReadingClipboard = true
+        pendingClipboardSaveChangeCount = clipboardPromptState.currentChangeCount
         Task {
             let content = await clipboardContentReader.readCurrentContent()
             isReadingClipboard = false
