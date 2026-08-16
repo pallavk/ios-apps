@@ -2,6 +2,9 @@ import SwiftUI
 import UIKit
 
 struct RootView: View {
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+
     let tray: Tray
     private let clipboard: any TextClipboard
 
@@ -34,6 +37,11 @@ struct RootView: View {
         }
         .task {
             await reload()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                Task { await reload() }
+            }
         }
         .alert("Pocket Tray couldn't save that", isPresented: isShowingError) {
             Button("OK", role: .cancel) {}
@@ -70,14 +78,27 @@ struct RootView: View {
             }
 
             ForEach(items) { item in
-                Button {
-                    copy(item)
-                } label: {
-                    TrayTextRow(item: item)
+                HStack(spacing: 12) {
+                    Button {
+                        copy(item)
+                    } label: {
+                        TrayTextRow(item: item)
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .accessibilityHint("Copies this \(item.kind == .url ? "link" : "text")")
+
+                    if item.kind == .url {
+                        Button {
+                            open(item)
+                        } label: {
+                            Image(systemName: "arrow.up.right.square")
+                                .imageScale(.large)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Open link")
+                    }
                 }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .accessibilityHint("Copies this text")
             }
         }
         .listStyle(.plain)
@@ -122,6 +143,14 @@ struct RootView: View {
         }
     }
 
+    private func open(_ item: TrayItem) {
+        guard let url = URL(string: item.text) else {
+            errorMessage = "Pocket Tray couldn't open that link."
+            return
+        }
+        openURL(url)
+    }
+
     private func reload() async {
         do {
             items = try await tray.recent()
@@ -143,15 +172,30 @@ private struct TrayTextRow: View {
     let item: TrayItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(item.text)
-                .foregroundStyle(.primary)
-                .lineLimit(4)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: item.kind == .url ? "link" : "text.alignleft")
+                .foregroundStyle(.tint)
+                .frame(width: 24)
 
-            Text(item.capturedAt, format: .relative(presentation: .named))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                if item.kind == .url {
+                    Text(URL(string: item.text)?.host() ?? "Link")
+                        .font(.headline)
+                    Text(item.text)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                } else {
+                    Text(item.text)
+                        .foregroundStyle(.primary)
+                        .lineLimit(4)
+                }
+
+                Text(item.capturedAt, format: .relative(presentation: .named))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
