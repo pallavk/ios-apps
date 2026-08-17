@@ -28,6 +28,20 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D40000000000000000000401"
+               BuildableName = "PocketTrayUITests.xctest"
+               BlueprintName = "PocketTrayUITests"
+               ReferencedContainer = "container:PocketTray.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "A10000000000000000000402"
                BuildableName = "PocketTrayTests.xctest"
                BlueprintName = "PocketTrayTests"
@@ -48,6 +62,15 @@
                BlueprintIdentifier = "A10000000000000000000402"
                BuildableName = "PocketTrayTests.xctest"
                BlueprintName = "PocketTrayTests"
+               ReferencedContainer = "container:PocketTray.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D40000000000000000000401"
+               BuildableName = "PocketTrayUITests.xctest"
+               BlueprintName = "PocketTrayUITests"
                ReferencedContainer = "container:PocketTray.xcodeproj">
             </BuildableReference>
          </TestableReference>

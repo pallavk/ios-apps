@@ -2,6 +2,47 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+enum PocketTraySection: CaseIterable, Hashable {
+    case recent
+    case collections
+    case search
+
+    var title: String {
+        switch self {
+        case .recent: String(localized: "Recent")
+        case .collections: String(localized: "Collections")
+        case .search: String(localized: "Search")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .recent: "clock"
+        case .collections: "folder"
+        case .search: "magnifyingglass"
+        }
+    }
+}
+
+enum RecentFilter: CaseIterable, Hashable {
+    case all
+    case pinned
+
+    var title: String {
+        switch self {
+        case .all: String(localized: "All")
+        case .pinned: String(localized: "Pinned")
+        }
+    }
+
+    func items(from recent: [TrayItem]) -> [TrayItem] {
+        switch self {
+        case .all: recent
+        case .pinned: recent.filter(\.isPinned)
+        }
+    }
+}
+
 struct RootView: View {
     private struct Feedback: Identifiable {
         let id = UUID()
@@ -37,34 +78,6 @@ struct RootView: View {
         }
     }
 
-    private enum Section: CaseIterable, Hashable {
-        case recent
-        case pinned
-        case collections
-        case trash
-        case search
-
-        var title: String {
-            switch self {
-            case .recent: String(localized: "Recent")
-            case .pinned: String(localized: "Pinned")
-            case .collections: String(localized: "Collections")
-            case .trash: String(localized: "Trash")
-            case .search: String(localized: "Search")
-            }
-        }
-
-        var systemImage: String {
-            switch self {
-            case .recent: "clock"
-            case .pinned: "pin"
-            case .collections: "folder"
-            case .trash: "trash"
-            case .search: "magnifyingglass"
-            }
-        }
-    }
-
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
@@ -74,7 +87,8 @@ struct RootView: View {
     private let clipboardContentReader: any ClipboardContentReading
     private let appLockController: AppLockController
 
-    @State private var selectedSection = Section.recent
+    @State private var selectedSection = PocketTraySection.recent
+    @State private var recentFilter = RecentFilter.all
     @State private var snapshot = TraySnapshot.empty
     @State private var feedback: Feedback?
     @State private var errorMessage: String?
@@ -113,28 +127,33 @@ struct RootView: View {
         Group {
             if #available(iOS 26.0, *) {
                 TabView(selection: $selectedSection) {
-                    Tab("Recent", systemImage: "clock", value: Section.recent) {
+                    Tab("Recent", systemImage: "clock", value: PocketTraySection.recent) {
                         sectionNavigation(.recent, items: items(for: .recent))
                     }
-                    Tab("Pinned", systemImage: "pin", value: Section.pinned) {
-                        sectionNavigation(.pinned, items: items(for: .pinned))
-                    }
-                    Tab("Collections", systemImage: "folder", value: Section.collections) {
+                    Tab("Collections", systemImage: "folder", value: PocketTraySection.collections) {
                         sectionNavigation(.collections, items: items(for: .collections))
                     }
-                    Tab("Trash", systemImage: "trash", value: Section.trash) {
-                        sectionNavigation(.trash, items: items(for: .trash))
-                    }
-                    Tab(value: Section.search, role: .search) {
+                    Tab(value: PocketTraySection.search, role: .search) {
                         sectionNavigation(.search, items: items(for: .search))
-                            .searchable(text: $searchText, prompt: "Search Pocket Tray")
                     }
                 }
                 .tabViewSearchActivation(.searchTabSelection)
+                .searchable(text: $searchText, prompt: "Search Pocket Tray")
+                .tabViewBottomAccessory {
+                    PocketTrayCaptureAccessory(
+                        mode: captureActionMode,
+                        isReadingClipboard: isReadingClipboard,
+                        isLoadingDirectCapture: isLoadingDirectCapture,
+                        actions: captureBarActions
+                    )
+                }
             } else {
                 TabView(selection: $selectedSection) {
-                    ForEach(Section.allCases, id: \.self) { section in
+                    ForEach(PocketTraySection.allCases, id: \.self) { section in
                         sectionNavigation(section, items: items(for: section))
+                            .safeAreaInset(edge: .bottom, spacing: 0) {
+                                bottomCaptureBar
+                            }
                             .tabItem { Label(section.title, systemImage: section.systemImage) }
                             .tag(section)
                     }
@@ -250,7 +269,13 @@ struct RootView: View {
                     await reload()
                 }
             case .settings:
-                AppLockSettingsView(controller: appLockController, tray: tray)
+                PocketTraySettingsView(
+                    controller: appLockController,
+                    tray: tray,
+                    trashCount: snapshot.trash.count
+                ) {
+                    trashContent
+                }
             case .systemCapture:
                 ControlCapturePrompt { captureCurrentClipboard() }
             }
@@ -332,7 +357,7 @@ struct RootView: View {
     }
 
     private func sectionNavigation(
-        _ section: Section,
+        _ section: PocketTraySection,
         items: [TrayItem]
     ) -> some View {
         NavigationStack {
@@ -355,33 +380,6 @@ struct RootView: View {
                         Label("Settings", systemImage: "gearshape")
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            presentedSheet = .newText
-                        } label: {
-                            Label("New Text", systemImage: "text.badge.plus")
-                        }
-                        Button {
-                            isPresentingPhotoPicker = true
-                        } label: {
-                            Label("Choose Photo", systemImage: "photo.on.rectangle")
-                        }
-                        Button {
-                            requestCameraCapture()
-                        } label: {
-                            Label("Take Photo", systemImage: "camera")
-                        }
-                    } label: {
-                        if isLoadingDirectCapture {
-                            ProgressView()
-                        } else {
-                            Label("Add", systemImage: "plus")
-                        }
-                    }
-                    .disabled(isLoadingDirectCapture)
-                    .accessibilityHint("Adds text or a photo directly to Pocket Tray")
-                }
                 if section == .collections {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { presentedSheet = .createCollection } label: {
@@ -394,26 +392,41 @@ struct RootView: View {
     }
 
     @ViewBuilder
-    private func sectionContent(_ section: Section, items: [TrayItem]) -> some View {
-        if section == .recent, clipboardPromptState.isVisible {
-            VStack(spacing: 0) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) {
-                        clipboardReadyLabel
-                        Spacer()
-                        clipboardSaveButton
-                    }
-                    VStack(alignment: .leading, spacing: 10) {
-                        clipboardReadyLabel
-                        clipboardSaveButton
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("clipboard-available")
-                recentContent(items)
-            }
+    private var bottomCaptureBar: some View {
+        bottomCaptureControls
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.bar)
+    }
+
+    @ViewBuilder
+    private var bottomCaptureControls: some View {
+        PocketTrayCaptureBar(
+            mode: captureActionMode,
+            isReadingClipboard: isReadingClipboard,
+            isLoadingDirectCapture: isLoadingDirectCapture,
+            isCompact: false,
+            actions: captureBarActions
+        )
+    }
+
+    private var captureActionMode: CaptureActionMode {
+        CaptureActionMode(clipboardPromptIsVisible: clipboardPromptState.isVisible)
+    }
+
+    private var captureBarActions: CaptureBarActions {
+        CaptureBarActions(
+            saveClipboard: captureCurrentClipboard,
+            newText: { presentedSheet = .newText },
+            choosePhoto: { isPresentingPhotoPicker = true },
+            takePhoto: requestCameraCapture
+        )
+    }
+
+    @ViewBuilder
+    private func sectionContent(_ section: PocketTraySection, items: [TrayItem]) -> some View {
+        if section == .recent {
+            recentContent(items)
         } else if section == .collections {
             collectionsContent
         } else if section == .search && !searchText.isEmpty && items.isEmpty {
@@ -421,51 +434,48 @@ struct RootView: View {
         } else if items.isEmpty {
             emptyState(for: section)
         } else {
-            itemList(items, section: section)
+            itemList(items)
         }
-    }
-
-    private var clipboardReadyLabel: some View {
-        Label("Clipboard ready", systemImage: "clipboard")
-            .font(.subheadline.weight(.medium))
-    }
-
-    private var clipboardSaveButton: some View {
-        Button {
-            captureCurrentClipboard()
-        } label: {
-            if isReadingClipboard {
-                ProgressView().controlSize(.small)
-            } else {
-                Text("Save")
-            }
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(isReadingClipboard)
-        .accessibilityHint("Reads and saves the current clipboard content")
     }
 
     @ViewBuilder
     private func recentContent(_ items: [TrayItem]) -> some View {
-        if items.isEmpty {
-            emptyState(for: .recent)
-        } else {
-            itemList(items, section: .recent)
+        VStack(spacing: 0) {
+            Picker("Recent filter", selection: $recentFilter) {
+                ForEach(RecentFilter.allCases, id: \.self) { filter in
+                    Text(filter.title).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+
+            if items.isEmpty {
+                if recentFilter == .pinned {
+                    ContentUnavailableView(
+                        "Nothing pinned",
+                        systemImage: "pin",
+                        description: Text("Pin an object to keep it close and stop it expiring.")
+                    )
+                } else {
+                    emptyState(for: .recent)
+                }
+            } else {
+                itemList(items)
+            }
         }
     }
 
-    private func items(for section: Section) -> [TrayItem] {
+    private func items(for section: PocketTraySection) -> [TrayItem] {
         switch section {
-        case .recent: snapshot.recent
-        case .pinned: snapshot.pinned
+        case .recent: recentFilter.items(from: snapshot.recent)
         case .collections: []
-        case .trash: snapshot.trash
         case .search: snapshot.search(searchText)
         }
     }
 
     @ViewBuilder
-    private func emptyState(for section: Section) -> some View {
+    private func emptyState(for section: PocketTraySection) -> some View {
         switch section {
         case .recent:
             ContentUnavailableView {
@@ -473,20 +483,8 @@ struct RootView: View {
             } description: {
                 Text("Tap Add to save text or a photo, or copy and share something from another app.")
             }
-        case .pinned:
-            ContentUnavailableView(
-                "Nothing pinned",
-                systemImage: "pin",
-                description: Text("Pin an object to keep it from expiring.")
-            )
         case .collections:
             EmptyView()
-        case .trash:
-            ContentUnavailableView(
-                "Trash is empty",
-                systemImage: "trash",
-                description: Text("Deleted and expired objects remain here for seven days.")
-            )
         case .search:
             ContentUnavailableView(
                 "Nothing to search yet",
@@ -522,7 +520,7 @@ struct RootView: View {
                                     description: Text("Use Add Items to place existing objects here.")
                                 )
                             } else {
-                                itemList(collectionItems, section: .collections)
+                                itemList(collectionItems)
                             }
                         }
                         .navigationTitle(collection.name)
@@ -557,12 +555,29 @@ struct RootView: View {
         }
     }
 
-    private func itemList(_ items: [TrayItem], section: Section) -> some View {
+    @ViewBuilder
+    private var trashContent: some View {
+        Group {
+            if snapshot.trash.isEmpty {
+                ContentUnavailableView(
+                    "Trash is empty",
+                    systemImage: "trash",
+                    description: Text("Deleted and expired objects remain here for seven days.")
+                )
+            } else {
+                itemList(snapshot.trash, isTrash: true)
+            }
+        }
+        .navigationTitle("Trash")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func itemList(_ items: [TrayItem], isTrash: Bool = false) -> some View {
         TrayItemList(
             items: items,
             collections: snapshot.collections,
             tray: tray,
-            isTrash: section == .trash,
+            isTrash: isTrash,
             sensitivePreviewSession: $sensitivePreviewSession,
             actions: TrayItemActions(
                 previewImage: { presentedSheet = .previewImage($0) },

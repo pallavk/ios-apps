@@ -21,6 +21,7 @@
 		A1000000000000000000013E /* ImageCaptureFailureModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002E /* ImageCaptureFailureModeTests.swift */; };
 		A1000000000000000000013F /* ImageShareCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002F /* ImageShareCaptureTests.swift */; };
 		A10000000000000000000140 /* ImageLoadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000030 /* ImageLoadingTests.swift */; };
+		A10000000000000000000141 /* PocketTrayShellTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000031 /* PocketTrayShellTests.swift */; };
 		A10000000000000000000109 /* AssetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* AssetStore.swift */; };
 		A10000000000000000000110 /* TrayImageViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000C /* TrayImageViews.swift */; };
 		A10000000000000000000111 /* NSItemProviderShareItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000D /* NSItemProviderShareItem.swift */; };
@@ -72,6 +73,7 @@
 		C30000000000000000000102 /* PocketTrayControls.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C30000000000000000000003 /* PocketTrayControls.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C30000000000000000000103 /* ControlCaptureHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001B /* ControlCaptureHandoff.swift */; };
 		C30000000000000000000104 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000005 /* Localizable.xcstrings */; };
+		D40000000000000000000101 /* PocketTrayShellUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000001 /* PocketTrayShellUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -96,6 +98,13 @@
 			remoteGlobalIDString = C30000000000000000000401;
 			remoteInfo = PocketTrayControls;
 		};
+		D40000000000000000000201 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000601 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000401;
+			remoteInfo = PocketTray;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
@@ -116,6 +125,7 @@
 		A1000000000000000000002E /* ImageCaptureFailureModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCaptureFailureModeTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000002F /* ImageShareCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageShareCaptureTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000030 /* ImageLoadingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoadingTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000031 /* PocketTrayShellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTrayShellTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000000B /* AssetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetStore.swift; sourceTree = "<group>"; };
 		A1000000000000000000000C /* TrayImageViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrayImageViews.swift; sourceTree = "<group>"; };
 		A1000000000000000000000D /* NSItemProviderShareItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NSItemProviderShareItem.swift; sourceTree = "<group>"; };
@@ -158,6 +168,8 @@
 		C30000000000000000000003 /* PocketTrayControls.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PocketTrayControls.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C30000000000000000000004 /* PocketTrayControls.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PocketTrayControls.entitlements; sourceTree = "<group>"; };
 		C30000000000000000000005 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		D40000000000000000000001 /* PocketTrayShellUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketTrayShellUITests.swift; sourceTree = "<group>"; };
+		D40000000000000000000002 /* PocketTrayUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PocketTrayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -165,6 +177,7 @@
 		A10000000000000000000212 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		B20000000000000000000211 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		C30000000000000000000211 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		D40000000000000000000211 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -187,6 +200,7 @@
 				B20000000000000000000301 /* PocketTrayShare */,
 				C30000000000000000000301 /* PocketTrayControls */,
 				A10000000000000000000303 /* PocketTrayTests */,
+				D40000000000000000000301 /* PocketTrayUITests */,
 				A10000000000000000000304 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -253,7 +267,7 @@
 		};
 		A10000000000000000000303 /* PocketTrayTests */ = {
 			isa = PBXGroup;
-			children = (A10000000000000000000003 /* TrayCaptureTests.swift */, A1000000000000000000002A /* TrayCollectionSearchTests.swift */, A1000000000000000000002B /* TrayLifecycleTests.swift */, A1000000000000000000002C /* TrayPersistenceTests.swift */, A1000000000000000000000A /* ImagePayloadTests.swift */, A1000000000000000000002D /* ImageCapturePersistenceTests.swift */, A1000000000000000000002E /* ImageCaptureFailureModeTests.swift */, A1000000000000000000002F /* ImageShareCaptureTests.swift */, A10000000000000000000030 /* ImageLoadingTests.swift */, A1000000000000000000000E /* PDFCaptureTests.swift */, A10000000000000000000012 /* ContentAnalysisTests.swift */, A10000000000000000000013 /* AppleContentAnalyzerTests.swift */, A10000000000000000000016 /* SensitiveContentTests.swift */, A10000000000000000000017 /* AppLockTests.swift */, A10000000000000000000019 /* SystemCaptureTests.swift */, A10000000000000000000023 /* DirectCaptureTests.swift */);
+			children = (A10000000000000000000003 /* TrayCaptureTests.swift */, A1000000000000000000002A /* TrayCollectionSearchTests.swift */, A1000000000000000000002B /* TrayLifecycleTests.swift */, A1000000000000000000002C /* TrayPersistenceTests.swift */, A1000000000000000000000A /* ImagePayloadTests.swift */, A1000000000000000000002D /* ImageCapturePersistenceTests.swift */, A1000000000000000000002E /* ImageCaptureFailureModeTests.swift */, A1000000000000000000002F /* ImageShareCaptureTests.swift */, A10000000000000000000030 /* ImageLoadingTests.swift */, A10000000000000000000031 /* PocketTrayShellTests.swift */, A1000000000000000000000E /* PDFCaptureTests.swift */, A10000000000000000000012 /* ContentAnalysisTests.swift */, A10000000000000000000013 /* AppleContentAnalyzerTests.swift */, A10000000000000000000016 /* SensitiveContentTests.swift */, A10000000000000000000017 /* AppLockTests.swift */, A10000000000000000000019 /* SystemCaptureTests.swift */, A10000000000000000000023 /* DirectCaptureTests.swift */);
 			path = PocketTrayTests;
 			sourceTree = "<group>";
 		};
@@ -264,8 +278,15 @@
 				A10000000000000000000005 /* PocketTrayTests.xctest */,
 				B20000000000000000000004 /* PocketTrayShare.appex */,
 				C30000000000000000000003 /* PocketTrayControls.appex */,
+				D40000000000000000000002 /* PocketTrayUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		D40000000000000000000301 /* PocketTrayUITests */ = {
+			isa = PBXGroup;
+			children = (D40000000000000000000001 /* PocketTrayShellUITests.swift */);
+			path = PocketTrayUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -332,6 +353,21 @@
 			productReference = A10000000000000000000005 /* PocketTrayTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		D40000000000000000000401 /* PocketTrayUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D40000000000000000000701 /* Build configuration list for PBXNativeTarget "PocketTrayUITests" */;
+			buildPhases = (
+				D40000000000000000000501 /* Sources */,
+				D40000000000000000000211 /* Frameworks */,
+				D40000000000000000000503 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = (D40000000000000000000202 /* PBXTargetDependency */);
+			name = PocketTrayUITests;
+			productName = PocketTrayUITests;
+			productReference = D40000000000000000000002 /* PocketTrayUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -346,6 +382,7 @@
 					A10000000000000000000402 = {CreatedOnToolsVersion = 26.1; TestTargetID = A10000000000000000000401;};
 					B20000000000000000000401 = {CreatedOnToolsVersion = 26.1;};
 					C30000000000000000000401 = {CreatedOnToolsVersion = 26.1;};
+					D40000000000000000000401 = {CreatedOnToolsVersion = 26.1; TestTargetID = A10000000000000000000401;};
 				};
 			};
 			buildConfigurationList = A10000000000000000000703 /* Build configuration list for PBXProject "PocketTray" */;
@@ -362,6 +399,7 @@
 				A10000000000000000000402 /* PocketTrayTests */,
 				B20000000000000000000401 /* PocketTrayShare */,
 				C30000000000000000000401 /* PocketTrayControls */,
+				D40000000000000000000401 /* PocketTrayUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -371,19 +409,22 @@
 		A10000000000000000000504 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		B20000000000000000000503 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B20000000000000000000112 /* Localizable.xcstrings in Resources */); runOnlyForDeploymentPostprocessing = 0; };
 		C30000000000000000000503 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (C30000000000000000000104 /* Localizable.xcstrings in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		D40000000000000000000503 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A10000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000101 /* PocketTrayApp.swift in Sources */, A10000000000000000000102 /* RootView.swift in Sources */, A10000000000000000000126 /* CaptureFeedback.swift in Sources */, A10000000000000000000127 /* TrayTextViews.swift in Sources */, A10000000000000000000128 /* ItemEditor.swift in Sources */, A10000000000000000000129 /* CollectionViews.swift in Sources */, A10000000000000000000130 /* TrayItemList.swift in Sources */, A10000000000000000000131 /* SavedObjectShortcuts.swift in Sources */, A10000000000000000000132 /* DirectCapture.swift in Sources */, A10000000000000000000104 /* Tray.swift in Sources */, A10000000000000000000135 /* TrayDomain.swift in Sources */, A10000000000000000000136 /* TrayRepository.swift in Sources */, A10000000000000000000137 /* TraySnapshot.swift in Sources */, A10000000000000000000138 /* TrayStore.swift in Sources */, A10000000000000000000139 /* InMemoryTrayRepository.swift in Sources */, A10000000000000000000105 /* TrayPersistence.swift in Sources */, A10000000000000000000106 /* ShareCapture.swift in Sources */, A10000000000000000000107 /* ImageAsset.swift in Sources */, A10000000000000000000109 /* AssetStore.swift in Sources */, A10000000000000000000110 /* TrayImageViews.swift in Sources */, A10000000000000000000111 /* NSItemProviderShareItem.swift in Sources */, A10000000000000000000113 /* PDFAsset.swift in Sources */, A10000000000000000000114 /* TrayPDFViews.swift in Sources */, A10000000000000000000115 /* ContentAnalysis.swift in Sources */, A10000000000000000000118 /* AppleContentAnalyzer.swift in Sources */, A10000000000000000000119 /* SensitiveContent.swift in Sources */, A10000000000000000000122 /* AppLock.swift in Sources */, A10000000000000000000124 /* SystemCapture.swift in Sources */, A10000000000000000000125 /* ControlCaptureHandoff.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
-		A10000000000000000000502 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000103 /* TrayCaptureTests.swift in Sources */, A1000000000000000000013A /* TrayCollectionSearchTests.swift in Sources */, A1000000000000000000013B /* TrayLifecycleTests.swift in Sources */, A1000000000000000000013C /* TrayPersistenceTests.swift in Sources */, A10000000000000000000108 /* ImagePayloadTests.swift in Sources */, A1000000000000000000013D /* ImageCapturePersistenceTests.swift in Sources */, A1000000000000000000013E /* ImageCaptureFailureModeTests.swift in Sources */, A1000000000000000000013F /* ImageShareCaptureTests.swift in Sources */, A10000000000000000000140 /* ImageLoadingTests.swift in Sources */, A10000000000000000000112 /* PDFCaptureTests.swift in Sources */, A10000000000000000000116 /* ContentAnalysisTests.swift in Sources */, A10000000000000000000117 /* AppleContentAnalyzerTests.swift in Sources */, A10000000000000000000120 /* SensitiveContentTests.swift in Sources */, A10000000000000000000121 /* AppLockTests.swift in Sources */, A10000000000000000000123 /* SystemCaptureTests.swift in Sources */, A10000000000000000000133 /* DirectCaptureTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000502 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000103 /* TrayCaptureTests.swift in Sources */, A1000000000000000000013A /* TrayCollectionSearchTests.swift in Sources */, A1000000000000000000013B /* TrayLifecycleTests.swift in Sources */, A1000000000000000000013C /* TrayPersistenceTests.swift in Sources */, A10000000000000000000108 /* ImagePayloadTests.swift in Sources */, A1000000000000000000013D /* ImageCapturePersistenceTests.swift in Sources */, A1000000000000000000013E /* ImageCaptureFailureModeTests.swift in Sources */, A1000000000000000000013F /* ImageShareCaptureTests.swift in Sources */, A10000000000000000000140 /* ImageLoadingTests.swift in Sources */, A10000000000000000000141 /* PocketTrayShellTests.swift in Sources */, A10000000000000000000112 /* PDFCaptureTests.swift in Sources */, A10000000000000000000116 /* ContentAnalysisTests.swift in Sources */, A10000000000000000000117 /* AppleContentAnalyzerTests.swift in Sources */, A10000000000000000000120 /* SensitiveContentTests.swift in Sources */, A10000000000000000000121 /* AppLockTests.swift in Sources */, A10000000000000000000123 /* SystemCaptureTests.swift in Sources */, A10000000000000000000133 /* DirectCaptureTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 		B20000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B20000000000000000000101 /* ShareViewController.swift in Sources */, B20000000000000000000102 /* Tray.swift in Sources */, B20000000000000000000113 /* TrayDomain.swift in Sources */, B20000000000000000000114 /* TrayRepository.swift in Sources */, B20000000000000000000115 /* TraySnapshot.swift in Sources */, B20000000000000000000116 /* TrayStore.swift in Sources */, B20000000000000000000103 /* TrayPersistence.swift in Sources */, B20000000000000000000104 /* ShareCapture.swift in Sources */, B20000000000000000000106 /* ImageAsset.swift in Sources */, B20000000000000000000107 /* AssetStore.swift in Sources */, B20000000000000000000108 /* NSItemProviderShareItem.swift in Sources */, B20000000000000000000109 /* PDFAsset.swift in Sources */, B20000000000000000000110 /* ContentAnalysis.swift in Sources */, B20000000000000000000111 /* SensitiveContent.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 		C30000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C30000000000000000000101 /* PocketTrayControls.swift in Sources */, C30000000000000000000103 /* ControlCaptureHandoff.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		D40000000000000000000501 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (D40000000000000000000101 /* PocketTrayShellUITests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		A10000000000000000000202 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A10000000000000000000401 /* PocketTray */; targetProxy = A10000000000000000000201 /* PBXContainerItemProxy */; };
 		B20000000000000000000202 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = B20000000000000000000401 /* PocketTrayShare */; targetProxy = B20000000000000000000201 /* PBXContainerItemProxy */; };
 		C30000000000000000000202 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = C30000000000000000000401 /* PocketTrayControls */; targetProxy = C30000000000000000000201 /* PBXContainerItemProxy */; };
+		D40000000000000000000202 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A10000000000000000000401 /* PocketTray */; targetProxy = D40000000000000000000201 /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -397,6 +438,8 @@
 		B20000000000000000000804 /* Share Release */ = {isa = XCBuildConfiguration; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_ENTITLEMENTS = PocketTrayShare/PocketTrayShare.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = DAA24P9G23; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = PocketTrayShare/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.pallavk.PocketTray.ShareExtension; PRODUCT_NAME = "$(TARGET_NAME)"; REGISTER_APP_GROUPS = YES; SKIP_INSTALL = YES; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; }; name = Release; };
 		C30000000000000000000803 /* Controls Debug */ = {isa = XCBuildConfiguration; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_ENTITLEMENTS = PocketTrayControls/PocketTrayControls.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = DAA24P9G23; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = PocketTrayControls/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.pallavk.PocketTray.Controls; PRODUCT_NAME = "$(TARGET_NAME)"; REGISTER_APP_GROUPS = YES; SKIP_INSTALL = YES; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; }; name = Debug; };
 		C30000000000000000000804 /* Controls Release */ = {isa = XCBuildConfiguration; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_ENTITLEMENTS = PocketTrayControls/PocketTrayControls.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = DAA24P9G23; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = PocketTrayControls/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.pallavk.PocketTray.Controls; PRODUCT_NAME = "$(TARGET_NAME)"; REGISTER_APP_GROUPS = YES; SKIP_INSTALL = YES; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; }; name = Release; };
+		D40000000000000000000801 /* UI Tests Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = DAA24P9G23; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; PRODUCT_BUNDLE_IDENTIFIER = com.pallavk.PocketTrayUITests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; TEST_TARGET_NAME = PocketTray; }; name = Debug; };
+		D40000000000000000000802 /* UI Tests Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = DAA24P9G23; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; PRODUCT_BUNDLE_IDENTIFIER = com.pallavk.PocketTrayUITests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; TEST_TARGET_NAME = PocketTray; }; name = Release; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -405,6 +448,7 @@
 		A10000000000000000000703 /* Build configuration list for PBXProject "PocketTray" */ = {isa = XCConfigurationList; buildConfigurations = (A10000000000000000000801 /* Project Debug */, A10000000000000000000802 /* Project Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		B20000000000000000000701 /* Build configuration list for PBXNativeTarget "PocketTrayShare" */ = {isa = XCConfigurationList; buildConfigurations = (B20000000000000000000803 /* Share Debug */, B20000000000000000000804 /* Share Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		C30000000000000000000701 /* Build configuration list for PBXNativeTarget "PocketTrayControls" */ = {isa = XCConfigurationList; buildConfigurations = (C30000000000000000000803 /* Controls Debug */, C30000000000000000000804 /* Controls Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		D40000000000000000000701 /* Build configuration list for PBXNativeTarget "PocketTrayUITests" */ = {isa = XCConfigurationList; buildConfigurations = (D40000000000000000000801 /* UI Tests Debug */, D40000000000000000000802 /* UI Tests Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 	};
 	rootObject = A10000000000000000000601 /* Project object */;

@@ -173,10 +173,12 @@ private struct AppLockedView: View {
     }
 }
 
-struct AppLockSettingsView: View {
+struct PocketTraySettingsView<TrashContent: View>: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var controller: AppLockController
     let tray: Tray
+    let trashCount: Int
+    @ViewBuilder let trashContent: () -> TrashContent
     @State private var isChangingSetting = false
     @State private var storageReport: TrayStorageReport?
     @State private var storageError: String?
@@ -185,6 +187,18 @@ struct AppLockSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Library") {
+                    NavigationLink {
+                        trashContent()
+                    } label: {
+                        LabeledContent {
+                            Text(trashCount, format: .number)
+                                .foregroundStyle(.secondary)
+                        } label: {
+                            Label("Trash", systemImage: "trash")
+                        }
+                    }
+                }
                 Section("Shortcuts") {
                     ShortcutsLink()
                     Text("Use Pocket Tray actions from Shortcuts, Siri, Spotlight, the Action button, or Home Screen widgets.")

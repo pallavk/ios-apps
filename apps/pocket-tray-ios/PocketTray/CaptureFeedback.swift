@@ -1,6 +1,110 @@
 import SwiftUI
 import UIKit
 
+enum CaptureActionMode: Equatable {
+    case add
+    case saveClipboard
+
+    init(clipboardPromptIsVisible: Bool) {
+        self = clipboardPromptIsVisible ? .saveClipboard : .add
+    }
+}
+
+struct CaptureBarActions {
+    let saveClipboard: () -> Void
+    let newText: () -> Void
+    let choosePhoto: () -> Void
+    let takePhoto: () -> Void
+}
+
+struct PocketTrayCaptureBar: View {
+    let mode: CaptureActionMode
+    let isReadingClipboard: Bool
+    let isLoadingDirectCapture: Bool
+    let isCompact: Bool
+    let actions: CaptureBarActions
+
+    var body: some View {
+        HStack(spacing: 10) {
+            switch mode {
+            case .add:
+                Menu {
+                    directCaptureMenuItems
+                } label: {
+                    Label("Add", systemImage: "plus")
+                        .font(isCompact ? .subheadline.weight(.semibold) : .headline)
+                        .frame(maxWidth: isCompact ? nil : .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isLoadingDirectCapture)
+                .accessibilityIdentifier("primary-capture-action")
+                .accessibilityHint("Adds text or a photo directly to Pocket Tray")
+            case .saveClipboard:
+                Button(action: actions.saveClipboard) {
+                    if isReadingClipboard {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Label("Save Clipboard", systemImage: "clipboard")
+                            .font(isCompact ? .subheadline.weight(.semibold) : .headline)
+                            .frame(maxWidth: isCompact ? nil : .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isReadingClipboard || isLoadingDirectCapture)
+                .accessibilityIdentifier("primary-capture-action")
+                .accessibilityHint("Reads and saves the current clipboard content")
+
+                Menu {
+                    directCaptureMenuItems
+                } label: {
+                    Label("Add", systemImage: "plus")
+                        .font(isCompact ? .subheadline.weight(.semibold) : .headline)
+                }
+                .buttonStyle(.bordered)
+                .disabled(isReadingClipboard || isLoadingDirectCapture)
+                .accessibilityHint("Adds text or a photo instead of saving the clipboard")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(mode == .saveClipboard ? "clipboard-available" : "capture-bar")
+    }
+
+    @ViewBuilder
+    private var directCaptureMenuItems: some View {
+        Button(action: actions.newText) {
+            Label("New Text", systemImage: "text.badge.plus")
+        }
+        Button(action: actions.choosePhoto) {
+            Label("Choose Photo", systemImage: "photo.on.rectangle")
+        }
+        Button(action: actions.takePhoto) {
+            Label("Take Photo", systemImage: "camera")
+        }
+    }
+}
+
+@available(iOS 26.0, *)
+struct PocketTrayCaptureAccessory: View {
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+
+    let mode: CaptureActionMode
+    let isReadingClipboard: Bool
+    let isLoadingDirectCapture: Bool
+    let actions: CaptureBarActions
+
+    var body: some View {
+        PocketTrayCaptureBar(
+            mode: mode,
+            isReadingClipboard: isReadingClipboard,
+            isLoadingDirectCapture: isLoadingDirectCapture,
+            isCompact: placement == .inline,
+            actions: actions
+        )
+        .padding(.horizontal, placement == .inline ? 4 : 12)
+    }
+}
+
 struct FeedbackToast: View {
     let message: String
     let actionTitle: String?
