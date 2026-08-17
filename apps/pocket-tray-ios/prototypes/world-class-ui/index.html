@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pocket Tray UI Prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #e9e7e2;
+      --screen: #fbfaf7;
+      --surface: #ffffff;
+      --surface-2: #f2f1ed;
+      --ink: #17191c;
+      --secondary: #666c73;
+      --tertiary: #92979c;
+      --line: rgba(20, 29, 39, .11);
+      --brand: #1559a6;
+      --brand-soft: #e7f0fa;
+      --warning: #a75d00;
+      --danger: #b92d28;
+      --success: #287a45;
+      --shadow: 0 24px 70px rgba(28, 35, 42, .22);
+      --radius: 46px;
+      --type-scale: 1;
+    }
+
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --canvas: #16191d;
+      --screen: #111316;
+      --surface: #1b1e22;
+      --surface-2: #24282d;
+      --ink: #f4f5f6;
+      --secondary: #b1b6bc;
+      --tertiary: #858b92;
+      --line: rgba(255, 255, 255, .12);
+      --brand: #66a8ef;
+      --brand-soft: #172d44;
+      --warning: #efa74f;
+      --danger: #ff736c;
+      --success: #65c283;
+      --shadow: 0 26px 90px rgba(0, 0, 0, .55);
+    }
+
+    [data-text="accessibility"] { --type-scale: 1.22; }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      display: grid;
+      place-items: center;
+      padding: 72px 24px 116px;
+      transition: background .2s ease;
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+
+    .lab-bar {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      padding: 6px;
+      max-width: calc(100vw - 24px);
+      overflow-x: auto;
+      background: #111820;
+      color: #f8fafc;
+      border-radius: 15px;
+      box-shadow: 0 10px 28px rgba(0,0,0,.25);
+    }
+
+    .lab-bar button, .lab-bar select {
+      border: 0;
+      border-radius: 10px;
+      color: inherit;
+      background: rgba(255,255,255,.10);
+      padding: 8px 10px;
+      white-space: nowrap;
+    }
+
+    .lab-bar button[aria-pressed="true"] { background: #2975ca; }
+
+    .phone {
+      width: min(402px, calc(100vw - 24px));
+      height: min(874px, calc(100vh - 118px));
+      min-height: 680px;
+      background: var(--screen);
+      border: 8px solid #080a0c;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      font-size: calc(16px * var(--type-scale));
+    }
+
+    .status {
+      height: 42px;
+      padding: 12px 22px 0;
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      font-size: .75em;
+      font-weight: 650;
+    }
+
+    .island {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 104px;
+      height: 29px;
+      border-radius: 20px;
+      background: #050607;
+    }
+
+    .app {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .nav {
+      padding: 8px var(--side) 10px;
+    }
+
+    .nav-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 34px;
+    }
+
+    .eyebrow {
+      color: var(--secondary);
+      font-size: .72em;
+      font-weight: 650;
+      letter-spacing: .02em;
+    }
+
+    h1 {
+      margin: 4px 0 0;
+      font-size: 2.05em;
+      letter-spacing: -.045em;
+      line-height: 1.05;
+    }
+
+    .icon-button {
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      display: grid;
+      place-items: center;
+      font-size: 1.15em;
+    }
+
+    .scroller {
+      min-height: 0;
+      overflow: auto;
+      padding: 0 var(--side) 154px;
+      scrollbar-width: none;
+    }
+
+    .scroller::-webkit-scrollbar { display: none; }
+
+    .filters {
+      display: flex;
+      gap: 8px;
+      padding: 4px 0 12px;
+      overflow-x: auto;
+    }
+
+    .chip {
+      border: 0;
+      background: var(--surface-2);
+      border-radius: 999px;
+      padding: 7px 12px;
+      color: var(--secondary);
+      font-size: .78em;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .chip.active { color: #fff; background: var(--brand); }
+
+    .section-title {
+      margin: 14px 0 6px;
+      color: var(--secondary);
+      font-size: .73em;
+      font-weight: 700;
+      letter-spacing: .035em;
+      text-transform: uppercase;
+    }
+
+    .list { border-top: 1px solid var(--line); }
+
+    .item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: start;
+      gap: var(--gap);
+      padding: var(--row-y) 0;
+      border-bottom: 1px solid var(--line);
+      cursor: pointer;
+    }
+
+    .thumb {
+      width: var(--thumb);
+      height: var(--thumb);
+      border-radius: var(--thumb-radius);
+      background: var(--surface-2);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      color: var(--brand);
+      font-size: calc(var(--thumb) * .34);
+      font-weight: 700;
+    }
+
+    .thumb.photo-one {
+      background:
+        linear-gradient(145deg, transparent 58%, #d5a54b 58%),
+        linear-gradient(35deg, #75a5ba 45%, #d8e0d9 45% 62%, #466f50 62%);
+    }
+
+    .thumb.photo-two {
+      background:
+        linear-gradient(25deg, #d46e45 0 32%, transparent 32%),
+        linear-gradient(155deg, #183c5b 0 42%, #e2c899 42% 65%, #f0ebe0 65%);
+    }
+
+    .item-main { min-width: 0; }
+
+    .item-title {
+      font-size: var(--title-size);
+      font-weight: 680;
+      letter-spacing: -.015em;
+      line-height: 1.18;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .item-copy {
+      margin-top: 3px;
+      color: var(--secondary);
+      font-size: var(--copy-size);
+      line-height: 1.3;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: var(--copy-lines);
+    }
+
+    .meta {
+      margin-top: 7px;
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      flex-wrap: wrap;
+      color: var(--tertiary);
+      font-size: .68em;
+      line-height: 1.2;
+    }
+
+    .badge {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      color: var(--brand);
+      font-weight: 650;
+    }
+
+    .badge.warning { color: var(--warning); }
+
+    .chevron {
+      color: var(--tertiary);
+      padding-top: 3px;
+      font-size: .95em;
+    }
+
+    .sensitive .thumb { color: var(--warning); }
+
+    .sensitive .item-copy {
+      height: 1.1em;
+      border-radius: 6px;
+      color: transparent;
+      background: repeating-linear-gradient(90deg, var(--surface-2) 0 18px, transparent 18px 23px);
+    }
+
+    .bottom-zone {
+      position: absolute;
+      inset: auto 0 0;
+      padding: 12px 12px 10px;
+      background: linear-gradient(transparent, var(--screen) 28%);
+      pointer-events: none;
+    }
+
+    .capture {
+      pointer-events: auto;
+      margin: 0 auto 10px;
+      width: fit-content;
+      min-width: 112px;
+      height: 44px;
+      border: 0;
+      border-radius: 24px;
+      background: var(--brand);
+      color: #fff;
+      font-weight: 720;
+      padding: 0 18px;
+      box-shadow: 0 8px 22px rgba(21, 89, 166, .26);
+    }
+
+    .tabbar {
+      pointer-events: auto;
+      height: 60px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      backdrop-filter: blur(20px) saturate(1.2);
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      align-items: center;
+      padding: 5px 8px;
+      box-shadow: 0 8px 26px rgba(30, 40, 50, .12);
+    }
+
+    .tab {
+      border: 0;
+      background: transparent;
+      display: grid;
+      justify-items: center;
+      gap: 2px;
+      color: var(--secondary);
+      font-size: .67em;
+      font-weight: 620;
+    }
+
+    .tab .tab-icon { font-size: 1.55em; line-height: 1; }
+    .tab.active { color: var(--brand); }
+
+    .empty {
+      min-height: 100%;
+      display: grid;
+      place-content: center;
+      text-align: center;
+      padding: 12px 12px 100px;
+    }
+
+    .pocket-mark {
+      width: 82px;
+      height: 62px;
+      margin: 0 auto 18px;
+      position: relative;
+      border: 5px solid var(--brand);
+      border-top: 0;
+      border-radius: 8px 8px 24px 24px;
+    }
+
+    .pocket-mark::before, .pocket-mark::after {
+      content: "";
+      position: absolute;
+      width: 30px;
+      height: 40px;
+      top: -15px;
+      border-radius: 7px;
+      background: var(--brand-soft);
+      border: 3px solid var(--brand);
+      transform: rotate(-7deg);
+      z-index: -1;
+    }
+
+    .pocket-mark::before { left: 8px; }
+    .pocket-mark::after { right: 7px; transform: rotate(8deg); }
+
+    .empty h2 { margin: 0; font-size: 1.35em; letter-spacing: -.025em; }
+    .empty p { color: var(--secondary); line-height: 1.4; margin: 8px auto 18px; max-width: 290px; }
+
+    .quick-actions { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+    .quick-actions button {
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--surface);
+      padding: 10px 12px;
+      font-weight: 650;
+      box-shadow: 0 3px 10px rgba(0,0,0,.04);
+    }
+
+    .search-field {
+      background: var(--surface-2);
+      border-radius: 13px;
+      padding: 10px 12px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--secondary);
+      margin: 3px 0 12px;
+    }
+
+    .search-field input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--ink);
+      font-size: .94em;
+    }
+
+    .search-home h3, .detail h3 { margin: 20px 0 8px; font-size: .92em; }
+
+    .recent-search {
+      display: flex;
+      justify-content: space-between;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--line);
+      color: var(--secondary);
+      font-size: .88em;
+    }
+
+    .collection-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--collection-gap);
+      padding-top: 6px;
+    }
+
+    .collection-card { min-width: 0; }
+
+    .cover {
+      aspect-ratio: 1.25;
+      border-radius: var(--cover-radius);
+      background: var(--surface-2);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px;
+      padding: 5px;
+      overflow: hidden;
+    }
+
+    .cover > span {
+      display: grid;
+      place-items: center;
+      background: var(--surface);
+      border-radius: calc(var(--cover-radius) - 5px);
+      color: var(--brand);
+      font-weight: 700;
+    }
+
+    .cover > span:first-child { grid-row: 1 / 3; }
+    .collection-card h3 { margin: 8px 2px 1px; font-size: .9em; }
+    .collection-card p { margin: 0 2px; color: var(--secondary); font-size: .72em; }
+
+    .detail-preview {
+      margin-top: 10px;
+      min-height: 210px;
+      border-radius: 24px;
+      padding: 22px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      font-size: 1.06em;
+      line-height: 1.52;
+      box-shadow: 0 5px 16px rgba(0,0,0,.035);
+    }
+
+    .detail-meta { margin-top: 18px; border-top: 1px solid var(--line); }
+    .meta-row { display: flex; justify-content: space-between; gap: 20px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: .82em; }
+    .meta-row span:first-child { color: var(--secondary); }
+
+    .primary-action {
+      pointer-events: auto;
+      width: 100%;
+      height: 48px;
+      border: 0;
+      border-radius: 16px;
+      color: #fff;
+      background: var(--brand);
+      font-weight: 720;
+      font-size: .94em;
+      box-shadow: 0 8px 22px rgba(21, 89, 166, .24);
+    }
+
+    .error-card {
+      margin-top: 12px;
+      padding: 14px;
+      border-radius: 16px;
+      background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+      border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+    }
+
+    .error-card strong { color: var(--danger); }
+    .error-card p { color: var(--secondary); margin: 5px 0 12px; font-size: .82em; line-height: 1.35; }
+    .error-card button { border: 0; background: transparent; color: var(--brand); font-weight: 700; padding: 0; }
+
+    .prototype-switcher {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      z-index: 30;
+      display: grid;
+      grid-template-columns: 44px minmax(180px, auto) 44px;
+      align-items: center;
+      background: #101820;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 999px;
+      padding: 5px;
+      box-shadow: 0 12px 34px rgba(0,0,0,.32);
+    }
+
+    .prototype-switcher button {
+      border: 0;
+      background: rgba(255,255,255,.1);
+      color: #fff;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      font-size: 1.05rem;
+    }
+
+    .variant-label { text-align: center; font-size: .82rem; font-weight: 700; padding: 0 12px; }
+    .variant-label small { display: block; color: #aeb8c2; font-weight: 500; margin-top: 1px; }
+
+    [data-variant="airy"] {
+      --side: 20px;
+      --gap: 13px;
+      --thumb: 72px;
+      --thumb-radius: 14px;
+      --row-y: 13px;
+      --title-size: .98em;
+      --copy-size: .82em;
+      --copy-lines: 3;
+      --collection-gap: 16px;
+      --cover-radius: 18px;
+    }
+
+    [data-variant="compact"] {
+      --side: 16px;
+      --gap: 10px;
+      --thumb: 50px;
+      --thumb-radius: 11px;
+      --row-y: 9px;
+      --title-size: .88em;
+      --copy-size: .75em;
+      --copy-lines: 2;
+      --collection-gap: 11px;
+      --cover-radius: 14px;
+    }
+
+    [data-variant="compact"] .meta { margin-top: 4px; gap: 6px; }
+    [data-variant="compact"] .section-title { margin-top: 9px; }
+    [data-variant="compact"] .filters { padding-bottom: 7px; }
+
+    @media (max-height: 760px) {
+      body { padding-top: 64px; }
+      .phone { min-height: 620px; }
+      .lab-bar { font-size: .78rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="lab-bar" aria-label="Prototype state controls">
+    <select id="screenSelect" aria-label="Screen">
+      <option value="recent">Recent</option>
+      <option value="empty">Empty</option>
+      <option value="search">Search</option>
+      <option value="collections">Collections</option>
+      <option value="detail">Detail</option>
+      <option value="sensitive">Sensitive</option>
+      <option value="error">Error</option>
+    </select>
+    <button id="themeButton" type="button">Dark</button>
+    <button id="textButton" type="button">Large Text</button>
+  </div>
+
+  <main class="phone" id="phone" data-variant="airy" data-theme="light" data-text="standard">
+    <div class="island" aria-hidden="true"></div>
+    <section class="screen">
+      <div class="status"><span>9:41</span><span>●●● ◒ ▰</span></div>
+      <div class="app" id="app"></div>
+      <div></div>
+    </section>
+  </main>
+
+  <nav class="prototype-switcher" aria-label="Prototype variants">
+    <button id="previousVariant" type="button" aria-label="Previous variant">←</button>
+    <div class="variant-label" id="variantLabel"></div>
+    <button id="nextVariant" type="button" aria-label="Next variant">→</button>
+  </nav>
+
+  <script>
+    // Two density variants of the Pocket Tray Recent experience, switchable via ?variant=.
+    const variants = [
+      { key: 'airy', name: 'Airy', note: 'Large previews · calm rhythm' },
+      { key: 'compact', name: 'Compact', note: 'More objects · rapid scanning' }
+    ];
+
+    const items = [
+      { type: 'image', icon: '', thumb: 'photo-one', title: 'Pickleball court setup', copy: 'Temporary marker layout over the tennis court', meta: ['Today', 'Projects'], pinned: true },
+      { type: 'text', icon: 'T', title: 'Ideas for the weekend', copy: 'Book the morning ferry, pack sunscreen, and check the weather before leaving.', meta: ['12 min ago'] },
+      { type: 'link', icon: '↗', title: 'SwiftUI design guidance', copy: 'developer.apple.com/design/human-interface-guidelines', meta: ['38 min ago', 'Reading'] },
+      { type: 'pdf', icon: 'PDF', title: 'Reservation confirmation.pdf', copy: '4 pages · Original preserved', meta: ['Yesterday', 'Travel'] },
+      { type: 'image', icon: '', thumb: 'photo-two', title: 'Sunset reference', copy: 'HEIC photo · 2.1 MB', meta: ['Yesterday'] },
+      { type: 'text', icon: 'T', title: 'Temporary access code', copy: '482 193', meta: ['Expires in 6 days'], sensitive: true },
+      { type: 'link', icon: '↗', title: 'Ferry schedule', copy: 'example.com/ferry/bintan', meta: ['2 days ago', 'Travel'] }
+    ];
+
+    const state = {
+      variant: new URLSearchParams(location.search).get('variant') || 'airy',
+      screen: new URLSearchParams(location.search).get('screen') || 'recent',
+      theme: new URLSearchParams(location.search).get('theme') || 'light',
+      text: new URLSearchParams(location.search).get('text') || 'standard'
+    };
+
+    const phone = document.getElementById('phone');
+    const app = document.getElementById('app');
+    const screenSelect = document.getElementById('screenSelect');
+
+    function updateURL() {
+      const query = new URLSearchParams(state);
+      history.replaceState(null, '', `?${query}`);
+    }
+
+    function nav(title, eyebrow = 'POCKET TRAY', trailing = '•••') {
+      return `<header class="nav"><div class="nav-top"><span class="eyebrow">${eyebrow}</span><button class="icon-button" aria-label="More options">${trailing}</button></div><h1>${title}</h1></header>`;
+    }
+
+    function bottom(active = 'recent', primary = 'Add') {
+      return `<div class="bottom-zone">
+        <button class="capture" data-action="capture">＋ ${primary}</button>
+        <nav class="tabbar" aria-label="Primary">
+          ${tab('recent', '◴', 'Recent', active)}
+          ${tab('collections', '▰', 'Collections', active)}
+          ${tab('search', '⌕', 'Search', active)}
+        </nav>
+      </div>`;
+    }
+
+    function tab(key, icon, label, active) {
+      return `<button class="tab ${key === active ? 'active' : ''}" data-screen="${key}"><span class="tab-icon">${icon}</span><span>${label}</span></button>`;
+    }
+
+    function itemRow(item) {
+      const classes = ['item', item.sensitive ? 'sensitive' : ''].join(' ');
+      const meta = item.meta.map((part, index) => `<span class="${index === 1 ? 'badge' : ''}">${index === 1 ? '▰ ' : ''}${part}</span>`).join('<span>·</span>');
+      return `<article class="${classes}" data-screen="detail">
+        <div class="thumb ${item.thumb || ''}">${item.sensitive ? '◉' : item.icon}</div>
+        <div class="item-main">
+          <div class="item-title">${item.sensitive ? 'Sensitive content hidden' : item.title}</div>
+          <div class="item-copy">${item.sensitive ? 'Hidden until you reveal it' : item.copy}</div>
+          <div class="meta">${item.pinned ? '<span class="badge warning">◆ Pinned</span><span>·</span>' : ''}${meta}</div>
+        </div>
+        <span class="chevron">›</span>
+      </article>`;
+    }
+
+    function recentScreen({ sensitiveOnly = false, error = false } = {}) {
+      const visible = sensitiveOnly ? items.filter(item => item.sensitive) : items;
+      const today = visible.slice(0, state.variant === 'airy' ? 3 : 4);
+      const earlier = visible.slice(today.length);
+      return `${nav('Recent')}
+        <div class="scroller">
+          <div class="filters"><button class="chip active">All</button><button class="chip">Pinned</button><button class="chip">Text</button><button class="chip">Media</button></div>
+          ${error ? `<div class="error-card"><strong>One original is unavailable</strong><p>The object is still in your tray. Re-copy it to restore the original file.</p><button>Show object</button></div>` : ''}
+          <div class="section-title">Today</div><div class="list">${today.map(itemRow).join('')}</div>
+          ${earlier.length ? `<div class="section-title">Earlier</div><div class="list">${earlier.map(itemRow).join('')}</div>` : ''}
+        </div>${bottom('recent')}`;
+    }
+
+    function emptyScreen() {
+      return `${nav('Recent')}<div class="scroller"><div class="empty"><div class="pocket-mark"></div><h2>Your pocket is ready</h2><p>Keep text, links, photos, and PDFs close while you move between apps.</p><div class="quick-actions"><button>New Text</button><button>Choose Photo</button><button>How to Share</button></div></div></div>${bottom('recent')}`;
+    }
+
+    function searchScreen() {
+      return `${nav('Search')}<div class="scroller search-home"><label class="search-field">⌕<input placeholder="Text, links, filenames, notes…" autofocus></label><div class="filters"><button class="chip active">All</button><button class="chip">Text</button><button class="chip">Links</button><button class="chip">Images</button><button class="chip">PDFs</button></div><h3>Recently used</h3><div class="list">${items.slice(0, 2).map(itemRow).join('')}</div><h3>Recent searches</h3><div class="recent-search"><span>travel reservation</span><span>↗</span></div><div class="recent-search"><span>pickleball</span><span>↗</span></div><div class="recent-search"><span>ferry</span><span>↗</span></div></div>${bottom('search')}`;
+    }
+
+    function collectionsScreen() {
+      const collections = [
+        ['Travel', '7 objects', ['✈', 'PDF', '↗']],
+        ['Projects', '12 objects', ['▧', 'T', '↗']],
+        ['Reading', '5 objects', ['↗', 'PDF', 'T']],
+        ['Receipts', '3 objects', ['PDF', '▧', 'T']]
+      ];
+      return `${nav('Collections')}<div class="scroller"><div class="collection-grid">${collections.map(([name, count, icons]) => `<article class="collection-card"><div class="cover">${icons.map(icon => `<span>${icon}</span>`).join('')}</div><h3>${name}</h3><p>${count}</p></article>`).join('')}</div></div>${bottom('collections')}`;
+    }
+
+    function detailScreen() {
+      return `${nav('Object', 'TEXT', '•••')}<div class="scroller detail"><div class="detail-preview">Book the morning ferry, pack sunscreen, and check the weather before leaving. Keep the reservation confirmation with the trip collection.</div><h3>Details</h3><div class="detail-meta"><div class="meta-row"><span>Collection</span><strong>Travel</strong></div><div class="meta-row"><span>Saved</span><strong>Today, 9:28 AM</strong></div><div class="meta-row"><span>Expires</span><strong>In 7 days</strong></div><div class="meta-row"><span>Note</span><strong>Weekend plan</strong></div></div></div><div class="bottom-zone"><button class="primary-action">Copy Text</button></div>`;
+    }
+
+    function render() {
+      if (!variants.some(variant => variant.key === state.variant)) state.variant = 'airy';
+      phone.dataset.variant = state.variant;
+      phone.dataset.theme = state.theme;
+      phone.dataset.text = state.text;
+      document.documentElement.dataset.theme = state.theme;
+      document.documentElement.dataset.text = state.text;
+      screenSelect.value = state.screen;
+      const screens = {
+        recent: () => recentScreen(),
+        empty: emptyScreen,
+        search: searchScreen,
+        collections: collectionsScreen,
+        detail: detailScreen,
+        sensitive: () => recentScreen({ sensitiveOnly: true }),
+        error: () => recentScreen({ error: true })
+      };
+      app.innerHTML = (screens[state.screen] || screens.recent)();
+      const variant = variants.find(candidate => candidate.key === state.variant);
+      document.getElementById('variantLabel').innerHTML = `${variant.name}<small>${variant.note}</small>`;
+      document.getElementById('themeButton').textContent = state.theme === 'light' ? 'Dark' : 'Light';
+      document.getElementById('textButton').textContent = state.text === 'standard' ? 'Large Text' : 'Standard Text';
+      document.querySelectorAll('[data-screen]').forEach(element => element.addEventListener('click', () => {
+        state.screen = element.dataset.screen;
+        updateURL();
+        render();
+      }));
+    }
+
+    function cycleVariant(delta) {
+      const index = variants.findIndex(variant => variant.key === state.variant);
+      state.variant = variants[(index + delta + variants.length) % variants.length].key;
+      updateURL();
+      render();
+    }
+
+    document.getElementById('previousVariant').addEventListener('click', () => cycleVariant(-1));
+    document.getElementById('nextVariant').addEventListener('click', () => cycleVariant(1));
+    document.getElementById('themeButton').addEventListener('click', () => { state.theme = state.theme === 'light' ? 'dark' : 'light'; updateURL(); render(); });
+    document.getElementById('textButton').addEventListener('click', () => { state.text = state.text === 'standard' ? 'accessibility' : 'standard'; updateURL(); render(); });
+    screenSelect.addEventListener('change', event => { state.screen = event.target.value; updateURL(); render(); });
+    document.addEventListener('keydown', event => {
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+      if (event.key === 'ArrowLeft') cycleVariant(-1);
+      if (event.key === 'ArrowRight') cycleVariant(1);
+    });
+    render();
+  </script>
+</body>
+</html>
