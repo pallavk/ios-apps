@@ -92,6 +92,8 @@ enum TrayPDFLoader {
 }
 
 struct TrayPDFRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let item: TrayItem
     let collectionName: String?
     let tray: Tray
@@ -123,18 +125,24 @@ struct TrayPDFRow: View {
                     .foregroundStyle(.white)
                     .padding(4)
             }
-            .frame(width: 56, height: 72)
+            .frame(width: 68, height: 88)
             .clipped()
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title ?? item.text)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 if item.title != nil {
-                    Text(item.text).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    Text(item.text)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                 }
                 if let note = item.note {
-                    Text(note).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                    Text(note)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 }
                 if let pageCount {
                     Text("\(pageCount) \(pageCount == 1 ? "page" : "pages")")
@@ -146,6 +154,9 @@ struct TrayPDFRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                TraySensitivityMetadata(item: item)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 if isUnavailable {
                     Label("Original unavailable", systemImage: "exclamationmark.triangle")
                         .font(.caption)
@@ -161,7 +172,7 @@ struct TrayPDFRow: View {
                     .accessibilityLabel("Pinned")
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 10)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
         .task(id: item.asset?.digest) {
@@ -196,6 +207,7 @@ struct TrayPDFRow: View {
         var parts = ["PDF", item.title ?? item.text]
         if let pageCount { parts.append("\(pageCount) \(pageCount == 1 ? "page" : "pages")") }
         if let collectionName { parts.append("Collection \(collectionName)") }
+        if item.protectsSensitivePreview { parts.append("Sensitive") }
         if isUnavailable { parts.append("Original unavailable") }
         parts.append(lifecycleAccessibilityDescription)
         return parts.joined(separator: ". ")
@@ -216,6 +228,7 @@ struct TrayPDFRow: View {
 struct TrayPDFDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let item: TrayItem
+    var collectionName: String? = nil
     let tray: Tray
 
     @State private var loaded: LoadedTrayPDF?
@@ -225,7 +238,16 @@ struct TrayPDFDetailView: View {
         NavigationStack {
             Group {
                 if let loaded {
-                    PDFDocumentView(document: loaded.document)
+                    VStack(alignment: .leading, spacing: 0) {
+                        PDFDocumentView(document: loaded.document)
+                        Divider()
+                        ScrollView {
+                            TrayDetailMetadata(item: item, collectionName: collectionName)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(16)
+                        }
+                        .frame(maxHeight: 180)
+                    }
                 } else if let errorMessage {
                     ContentUnavailableView(
                         "PDF unavailable",
@@ -242,12 +264,19 @@ struct TrayPDFDetailView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let loaded {
-                    ToolbarItem(placement: .primaryAction) {
-                        ShareLink(item: loaded.exportURL) {
-                            Label("Share Original", systemImage: "square.and.arrow.up")
-                        }
+                    ShareLink(item: loaded.exportURL) {
+                        Label("Share Original", systemImage: "square.and.arrow.up")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("detail-primary-action")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.bar)
                 }
             }
         }

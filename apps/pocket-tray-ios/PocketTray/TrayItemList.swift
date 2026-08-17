@@ -1,6 +1,60 @@
 import SwiftUI
 
+enum TrayItemPeriod: CaseIterable, Hashable {
+    case today
+    case yesterday
+    case earlier
+
+    var title: String {
+        switch self {
+        case .today: String(localized: "Today")
+        case .yesterday: String(localized: "Yesterday")
+        case .earlier: String(localized: "Earlier")
+        }
+    }
+}
+
+struct TrayItemSection: Identifiable, Equatable {
+    let period: TrayItemPeriod
+    let items: [TrayItem]
+
+    var id: TrayItemPeriod { period }
+
+    static func group(
+        _ items: [TrayItem],
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> [TrayItemSection] {
+        let today = calendar.startOfDay(for: now)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        let grouped = Dictionary(grouping: items) { item in
+            if item.capturedAt >= today { return TrayItemPeriod.today }
+            if item.capturedAt >= yesterday { return TrayItemPeriod.yesterday }
+            return TrayItemPeriod.earlier
+        }
+        return TrayItemPeriod.allCases.compactMap { period in
+            grouped[period].map { TrayItemSection(period: period, items: $0) }
+        }
+    }
+}
+
+enum QuickCopyPolicy {
+    static func shouldCopyOnTap(_ item: TrayItem, isEnabled: Bool) -> Bool {
+        guard isEnabled, !item.protectsSensitivePreview else { return false }
+        return item.kind == .text || item.kind == .url
+    }
+}
+
+enum QuickCopyPreference {
+    static let key = "interaction.quickCopyOnTap"
+    @MainActor
+    static let defaults = UserDefaults(
+        suiteName: FileTrayRepository.appGroupIdentifier
+    ) ?? .standard
+}
+
 struct TrayItemActions {
+    let showDetail: (TrayItem) -> Void
     let previewImage: (TrayItem) -> Void
     let previewPDF: (TrayItem) -> Void
     let copy: (TrayItem) -> Void
@@ -20,14 +74,29 @@ struct TrayItemList: View {
     let collections: [TrayCollection]
     let tray: Tray
     let isTrash: Bool
+    let groupsByCaptureDate: Bool
+    let quickCopyOnTap: Bool
     @Binding var sensitivePreviewSession: SensitivePreviewSession
     let actions: TrayItemActions
 
     var body: some View {
-        List(items) { item in
-            itemRow(item)
+        List {
+            if groupsByCaptureDate {
+                ForEach(TrayItemSection.group(items)) { section in
+                    Section(section.period.title) {
+                        ForEach(section.items) { item in
+                            itemRow(item)
+                        }
+                    }
+                }
+            } else {
+                ForEach(items) { item in
+                    itemRow(item)
+                }
+            }
         }
         .listStyle(.plain)
+        .listSectionSpacing(18)
     }
 
     @ViewBuilder
@@ -88,7 +157,7 @@ struct TrayItemList: View {
             if isTrash {
                 TrayImageRow(item: item, collectionName: collectionName(for: item), tray: tray)
             } else {
-                Button { actions.previewImage(item) } label: {
+                Button { actions.showDetail(item) } label: {
                     TrayImageRow(item: item, collectionName: collectionName(for: item), tray: tray)
                 }
                 .buttonStyle(.plain)
@@ -99,7 +168,7 @@ struct TrayItemList: View {
             if isTrash {
                 TrayPDFRow(item: item, collectionName: collectionName(for: item), tray: tray)
             } else {
-                Button { actions.previewPDF(item) } label: {
+                Button { actions.showDetail(item) } label: {
                     TrayPDFRow(item: item, collectionName: collectionName(for: item), tray: tray)
                 }
                 .buttonStyle(.plain)
@@ -109,12 +178,22 @@ struct TrayItemList: View {
         } else if isTrash {
             TrayTextRow(item: item, collectionName: collectionName(for: item))
         } else {
-            Button { actions.copy(item) } label: {
+            Button {
+                if QuickCopyPolicy.shouldCopyOnTap(item, isEnabled: quickCopyOnTap) {
+                    actions.copy(item)
+                } else {
+                    actions.showDetail(item)
+                }
+            } label: {
                 TrayTextRow(item: item, collectionName: collectionName(for: item))
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
-            .accessibilityHint("Copies this \(item.kind == .url ? "link" : "text")")
+            .accessibilityHint(
+                QuickCopyPolicy.shouldCopyOnTap(item, isEnabled: quickCopyOnTap)
+                    ? "Copies this \(item.kind == .url ? "link" : "text")"
+                    : "Opens object details"
+            )
         }
     }
 

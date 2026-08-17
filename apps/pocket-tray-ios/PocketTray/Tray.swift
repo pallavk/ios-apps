@@ -263,6 +263,13 @@ struct Tray: Sendable {
         return item
     }
 
+    func restoreStateFromUndo(_ original: TrayItem) async throws -> TrayItem {
+        guard let item = try await repository.apply(.restoreStateFromUndo(original)).item else {
+            throw TrayError.itemNotFound
+        }
+        return item
+    }
+
     func deletePermanently(_ id: UUID) async throws {
         guard try await repository.apply(.deletePermanently(id)).succeeded else {
             throw TrayError.itemNotFound

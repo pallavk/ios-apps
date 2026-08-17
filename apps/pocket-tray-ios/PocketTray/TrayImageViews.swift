@@ -85,6 +85,8 @@ enum TrayImageLoader {
 }
 
 struct TrayImageRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let item: TrayItem
     let collectionName: String?
     let tray: Tray
@@ -95,29 +97,29 @@ struct TrayImageRow: View {
             TrayImageThumbnail(
                 item: item,
                 tray: tray,
-                maxPixelSize: 160,
+                maxPixelSize: 192,
                 isUnavailable: $isUnavailable
             )
-                .frame(width: 72, height: 72)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .frame(width: 88, height: 88)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title ?? item.text)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
 
                 if item.title != nil {
                     Text(item.text)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                 }
 
                 if let note = item.note {
                     Text(note)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 }
 
                 if let collectionName {
@@ -125,6 +127,10 @@ struct TrayImageRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                TraySensitivityMetadata(item: item)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 if isUnavailable {
                     Label("Original unavailable", systemImage: "exclamationmark.triangle")
@@ -144,7 +150,7 @@ struct TrayImageRow: View {
                     .accessibilityLabel("Pinned")
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 10)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
     }
@@ -165,6 +171,7 @@ struct TrayImageRow: View {
     private var accessibilitySummary: String {
         var parts = ["Image", item.title ?? item.text]
         if let collectionName { parts.append("Collection \(collectionName)") }
+        if item.protectsSensitivePreview { parts.append("Sensitive") }
         if isUnavailable { parts.append("Original unavailable") }
         parts.append(lifecycleAccessibilityDescription)
         return parts.joined(separator: ". ")
@@ -186,6 +193,7 @@ struct TrayImageDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     let item: TrayItem
+    var collectionName: String? = nil
     let tray: Tray
 
     @State private var loaded: LoadedTrayImage?
@@ -196,11 +204,16 @@ struct TrayImageDetailView: View {
             Group {
                 if let loaded {
                     ScrollView {
-                        Image(uiImage: loaded.image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity)
-                            .padding()
+                        VStack(alignment: .leading, spacing: 18) {
+                            Image(uiImage: loaded.image)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity)
+                                .accessibilityLabel("Image: \(item.title ?? item.text)")
+
+                            TrayDetailMetadata(item: item, collectionName: collectionName)
+                        }
+                        .padding(20)
                     }
                 } else if let errorMessage {
                     ContentUnavailableView(
@@ -218,12 +231,19 @@ struct TrayImageDetailView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let loaded {
-                    ToolbarItem(placement: .primaryAction) {
-                        ShareLink(item: loaded.originalURL) {
-                            Label("Share Original", systemImage: "square.and.arrow.up")
-                        }
+                    ShareLink(item: loaded.originalURL) {
+                        Label("Share Original", systemImage: "square.and.arrow.up")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("detail-primary-action")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.bar)
                 }
             }
         }

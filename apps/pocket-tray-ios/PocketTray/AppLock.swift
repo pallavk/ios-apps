@@ -176,6 +176,10 @@ private struct AppLockedView: View {
 struct PocketTraySettingsView<TrashContent: View>: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var controller: AppLockController
+    @AppStorage(
+        QuickCopyPreference.key,
+        store: QuickCopyPreference.defaults
+    ) private var quickCopyOnTap = false
     let tray: Tray
     let trashCount: Int
     @ViewBuilder let trashContent: () -> TrashContent
@@ -198,6 +202,12 @@ struct PocketTraySettingsView<TrashContent: View>: View {
                             Label("Trash", systemImage: "trash")
                         }
                     }
+                }
+                Section("Interaction") {
+                    Toggle("Quick Copy on Tap", isOn: $quickCopyOnTap)
+                    Text("Off by default. When enabled, tapping ordinary text or links copies them immediately. Images, PDFs, and anything marked sensitive always open first.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 Section("Shortcuts") {
                     ShortcutsLink()

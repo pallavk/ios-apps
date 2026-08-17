@@ -44,14 +44,24 @@ enum RecentFilter: CaseIterable, Hashable {
 }
 
 struct RootView: View {
+    private enum UndoOperation {
+        case restoreState(TrayItem)
+    }
+
+    private enum FeedbackAction {
+        case addToCollection(TrayItem)
+        case undo(UndoOperation)
+    }
+
     private struct Feedback: Identifiable {
         let id = UUID()
         let message: String
-        let collectionItem: TrayItem?
+        let action: FeedbackAction?
     }
 
     private enum SheetDestination: Identifiable {
         case createCollection
+        case detail(TrayItem)
         case assignCollection(TrayItem)
         case addItems(TrayCollection)
         case editItem(TrayItem)
@@ -65,6 +75,7 @@ struct RootView: View {
         var id: String {
             switch self {
             case .createCollection: "create-collection"
+            case let .detail(item): "detail-\(item.id)"
             case let .assignCollection(item): "assign-collection-\(item.id)"
             case let .addItems(collection): "add-items-\(collection.id)"
             case let .editItem(item): "edit-item-\(item.id)"
@@ -80,6 +91,10 @@ struct RootView: View {
 
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(
+        QuickCopyPreference.key,
+        store: QuickCopyPreference.defaults
+    ) private var quickCopyOnTap = false
 
     let tray: Tray
     private let clipboard: any TextClipboard
@@ -194,12 +209,15 @@ struct RootView: View {
             if let feedback {
                 FeedbackToast(
                     message: feedback.message,
-                    actionTitle: feedback.collectionItem == nil
-                        ? nil
-                        : String(localized: "Add to Collection")
+                    actionTitle: feedbackActionTitle(feedback.action)
                 ) {
-                    if let item = feedback.collectionItem {
+                    switch feedback.action {
+                    case let .addToCollection(item):
                         presentedSheet = .assignCollection(item)
+                    case let .undo(operation):
+                        performUndo(operation)
+                    case nil:
+                        break
                     }
                     self.feedback = nil
                 }
@@ -212,7 +230,7 @@ struct RootView: View {
         .task(id: feedback?.id) {
             guard let currentFeedback = feedback else { return }
             let feedbackID = currentFeedback.id
-            let duration: Duration = currentFeedback.collectionItem == nil ? .seconds(2) : .seconds(5)
+            let duration: Duration = currentFeedback.action == nil ? .seconds(2) : .seconds(5)
             try? await Task.sleep(for: duration)
             guard !Task.isCancelled, feedback?.id == feedbackID else { return }
             feedback = nil
@@ -227,6 +245,13 @@ struct RootView: View {
                 ) {
                     await reload()
                 }
+            case let .detail(item):
+                TrayObjectDetailView(
+                    item: item,
+                    collectionName: collectionName(for: item),
+                    tray: tray,
+                    clipboard: clipboard
+                )
             case let .assignCollection(item):
                 CollectionAssignmentView(
                     item: item,
@@ -461,7 +486,7 @@ struct RootView: View {
                     emptyState(for: .recent)
                 }
             } else {
-                itemList(items)
+                itemList(items, groupsByCaptureDate: true)
             }
         }
     }
@@ -572,14 +597,21 @@ struct RootView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func itemList(_ items: [TrayItem], isTrash: Bool = false) -> some View {
+    private func itemList(
+        _ items: [TrayItem],
+        isTrash: Bool = false,
+        groupsByCaptureDate: Bool = false
+    ) -> some View {
         TrayItemList(
             items: items,
             collections: snapshot.collections,
             tray: tray,
             isTrash: isTrash,
+            groupsByCaptureDate: groupsByCaptureDate,
+            quickCopyOnTap: quickCopyOnTap,
             sensitivePreviewSession: $sensitivePreviewSession,
             actions: TrayItemActions(
+                showDetail: { presentedSheet = .detail($0) },
                 previewImage: { presentedSheet = .previewImage($0) },
                 previewPDF: { presentedSheet = .previewPDF($0) },
                 copy: copy,
@@ -594,6 +626,11 @@ struct RootView: View {
                 performSuggestedAction: perform
             )
         )
+    }
+
+    private func collectionName(for item: TrayItem) -> String? {
+        guard let collectionID = item.collectionID else { return nil }
+        return snapshot.collections.first { $0.id == collectionID }?.name
     }
 
     private var isShowingError: Binding<Bool> {
@@ -666,7 +703,7 @@ struct RootView: View {
                 )
                 showFeedback(
                     String(localized: "Saved to Pocket Tray"),
-                    collectionItem: snapshot.collections.isEmpty ? nil : saved
+                    action: snapshot.collections.isEmpty ? nil : .addToCollection(saved)
                 )
                 if pendingClipboardSaveChangeCount != nil {
                     clipboardPromptState.didSaveCurrentClipboard()
@@ -689,19 +726,28 @@ struct RootView: View {
     }
 
     private func setPinned(_ item: TrayItem, to isPinned: Bool) {
-        perform(isPinned ? String(localized: "Pinned") : String(localized: "Unpinned")) {
+        perform(
+            isPinned ? String(localized: "Pinned") : String(localized: "Unpinned"),
+            feedbackAction: .undo(.restoreState(item))
+        ) {
             _ = try await tray.setPinned(item.id, to: isPinned)
         }
     }
 
     private func moveToTrash(_ item: TrayItem) {
-        perform(String(localized: "Moved to Trash")) {
+        perform(
+            String(localized: "Moved to Trash"),
+            feedbackAction: .undo(.restoreState(item))
+        ) {
             _ = try await tray.moveToTrash(item.id)
         }
     }
 
     private func restore(_ item: TrayItem) {
-        perform(String(localized: "Restored to Recent")) {
+        perform(
+            String(localized: "Restored to Recent"),
+            feedbackAction: .undo(.restoreState(item))
+        ) {
             _ = try await tray.restore(item.id)
         }
     }
@@ -729,17 +775,35 @@ struct RootView: View {
 
     private func perform(
         _ successMessage: String,
+        feedbackAction: FeedbackAction? = nil,
         operation: @escaping @Sendable () async throws -> Void
     ) {
         Task {
             do {
                 try await operation()
-                showFeedback(successMessage)
+                showFeedback(successMessage, action: feedbackAction)
                 await reload()
                 await refreshStorageWarning()
             } catch {
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    private func performUndo(_ operation: UndoOperation) {
+        perform(String(localized: "Undone")) {
+            switch operation {
+            case let .restoreState(original):
+                _ = try await tray.restoreStateFromUndo(original)
+            }
+        }
+    }
+
+    private func feedbackActionTitle(_ action: FeedbackAction?) -> String? {
+        switch action {
+        case .addToCollection: String(localized: "Add to Collection")
+        case .undo: String(localized: "Undo")
+        case nil: nil
         }
     }
 
@@ -899,7 +963,9 @@ struct RootView: View {
         clipboardPromptState.dismissCurrentPrompt()
         showFeedback(
             String(localized: "Saved to Pocket Tray"),
-            collectionItem: !snapshot.collections.isEmpty && item.collectionID == nil ? item : nil
+            action: !snapshot.collections.isEmpty && item.collectionID == nil
+                ? .addToCollection(item)
+                : nil
         )
         await reload()
         await refreshStorageWarning()
@@ -907,9 +973,9 @@ struct RootView: View {
 
     private func showFeedback(
         _ message: String,
-        collectionItem: TrayItem? = nil
+        action: FeedbackAction? = nil
     ) {
-        feedback = Feedback(message: message, collectionItem: collectionItem)
+        feedback = Feedback(message: message, action: action)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         UIAccessibility.post(notification: .announcement, argument: message)
     }

@@ -5,6 +5,7 @@ enum TrayMutation: Sendable {
     case setPinned(UUID, Bool, Date)
     case moveToTrash(UUID, Date)
     case restore(UUID, Date)
+    case restoreStateFromUndo(TrayItem)
     case deletePermanently(UUID)
     case edit(UUID, TrayItemEdits, Date)
     case createCollection(TrayCollection)

@@ -6,15 +6,19 @@ struct PocketTrayApp: App {
     private let tray: Tray
     private let isUITesting: Bool
     private let showsUITestClipboard: Bool
+    private let usesUITestAccessibilitySize: Bool
     @StateObject private var appLockController: AppLockController
 
     init() {
         let arguments = ProcessInfo.processInfo.arguments
         isUITesting = _isDebugAssertConfiguration() && arguments.contains("--ui-testing")
         showsUITestClipboard = arguments.contains("--ui-testing-clipboard")
+        usesUITestAccessibilitySize = arguments.contains("--ui-testing-accessibility-size")
         let repository: any TrayRepository
         if isUITesting {
-            repository = InMemoryTrayRepository()
+            repository = arguments.contains("--ui-testing-content")
+                ? PocketTrayUITestFixtures.repository()
+                : InMemoryTrayRepository()
         } else {
             do {
                 repository = try FileTrayRepository.sharedContainer()
@@ -32,19 +36,29 @@ struct PocketTrayApp: App {
     var body: some Scene {
         WindowGroup {
             if isUITesting {
-                RootView(
-                    tray: tray,
-                    clipboardAvailabilityChecker: UITestClipboardAvailabilityChecker(
-                        hasSupportedContent: showsUITestClipboard
-                    ),
-                    clipboardContentReader: UITestClipboardContentReader(),
-                    appLockController: appLockController
-                )
+                uiTestRoot
             } else {
                 AppLockGate(controller: appLockController) {
                     RootView(tray: tray, appLockController: appLockController)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var uiTestRoot: some View {
+        let root = RootView(
+            tray: tray,
+            clipboardAvailabilityChecker: UITestClipboardAvailabilityChecker(
+                hasSupportedContent: showsUITestClipboard
+            ),
+            clipboardContentReader: UITestClipboardContentReader(),
+            appLockController: appLockController
+        )
+        if usesUITestAccessibilitySize {
+            root.dynamicTypeSize(.accessibility3)
+        } else {
+            root
         }
     }
 }

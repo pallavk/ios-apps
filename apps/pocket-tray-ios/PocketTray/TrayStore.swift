@@ -23,6 +23,8 @@ extension TrayStore {
             .item(items.moveToTrash(id, at: date))
         case let .restore(id, date):
             .item(items.restore(id, at: date))
+        case let .restoreStateFromUndo(original):
+            .item(items.restoreStateFromUndo(original))
         case let .deletePermanently(id):
             .success(items.deletePermanently(id))
         case let .edit(id, edits, date):
@@ -184,6 +186,12 @@ extension Array where Element == TrayItem {
         let updated = self[index].restoring(at: date)
         self[index] = updated
         return updated
+    }
+
+    mutating func restoreStateFromUndo(_ original: TrayItem) -> TrayItem? {
+        guard let index = firstIndex(where: { $0.id == original.id }) else { return nil }
+        self[index] = original
+        return original
     }
 
     mutating func deletePermanently(_ id: UUID) -> Bool {

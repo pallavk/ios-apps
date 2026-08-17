@@ -161,6 +161,66 @@ final class TrayLifecycleTests: XCTestCase {
         XCTAssertEqual(trash, [])
     }
 
+    func testUndoingManualTrashRestoresExactPreviousLifecycleState() async throws {
+        let repository = InMemoryTrayRepository()
+        let captured = try await Tray(
+            repository: repository,
+            now: { Date(timeIntervalSince1970: 1_000) }
+        ).capture(.text("Keep my lifecycle"))
+        let original = try await Tray(
+            repository: repository,
+            now: { Date(timeIntervalSince1970: 2_000) }
+        ).setPinned(captured.id, to: true)
+        let tray = Tray(
+            repository: repository,
+            now: { Date(timeIntervalSince1970: 3_000) }
+        )
+        _ = try await tray.moveToTrash(original.id)
+
+        let restored = try await tray.restoreStateFromUndo(original)
+        let recent = try await tray.recent()
+        let trash = try await tray.trash()
+
+        XCTAssertEqual(restored, original)
+        XCTAssertEqual(recent, [original])
+        XCTAssertEqual(trash, [])
+    }
+
+    func testUndoingPinRestoresOriginalExpiry() async throws {
+        let repository = InMemoryTrayRepository()
+        let original = try await Tray(
+            repository: repository,
+            now: { Date(timeIntervalSince1970: 1_000) }
+        ).capture(.text("Keep my expiry"))
+        let tray = Tray(repository: repository, now: { Date(timeIntervalSince1970: 2_000) })
+        _ = try await tray.setPinned(original.id, to: true)
+
+        let restored = try await tray.restoreStateFromUndo(original)
+
+        XCTAssertEqual(restored, original)
+        XCTAssertEqual(restored.expiresAt, original.expiresAt)
+    }
+
+    func testUndoingRestorePreservesOriginalTrashRetentionDate() async throws {
+        let repository = InMemoryTrayRepository()
+        let captured = try await Tray(
+            repository: repository,
+            now: { Date(timeIntervalSince1970: 1_000) }
+        ).capture(.text("Keep my trash date"))
+        let trashedAt = Date(timeIntervalSince1970: 2_000)
+        let originalTrashItem = try await Tray(
+            repository: repository,
+            now: { trashedAt }
+        ).moveToTrash(captured.id)
+        let tray = Tray(repository: repository, now: { Date(timeIntervalSince1970: 3_000) })
+        _ = try await tray.restore(captured.id)
+
+        let restored = try await tray.restoreStateFromUndo(originalTrashItem)
+
+        XCTAssertEqual(restored, originalTrashItem)
+        XCTAssertEqual(restored.trashedAt, trashedAt)
+    }
+
     func testPermanentlyDeletingATrashedObjectRemovesItImmediately() async throws {
         let repository = InMemoryTrayRepository()
         let captured = try await Tray(
