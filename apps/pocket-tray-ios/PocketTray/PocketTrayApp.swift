@@ -12,6 +12,9 @@ struct PocketTrayApp: App {
     init() {
         let arguments = ProcessInfo.processInfo.arguments
         isUITesting = _isDebugAssertConfiguration() && arguments.contains("--ui-testing")
+        if isUITesting {
+            UserDefaults.standard.removeObject(forKey: "PocketTray.searchHistory")
+        }
         showsUITestClipboard = arguments.contains("--ui-testing-clipboard")
         usesUITestAccessibilitySize = arguments.contains("--ui-testing-accessibility-size")
         let repository: any TrayRepository

@@ -133,4 +133,99 @@ final class TrayCollectionSearchTests: XCTestCase {
         XCTAssertEqual(byNote.map(\.id), [textItem.id])
         XCTAssertEqual(byCollection.map(\.id), [textItem.id])
     }
+
+    func testSearchRanksTitleMatchesAheadOfBodyMatchesThenUsesRecency() {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let body = TrayItem(id: UUID(), text: "Project Atlas body", capturedAt: now)
+        let olderTitle = TrayItem(
+            id: UUID(),
+            text: "Reference",
+            capturedAt: now.addingTimeInterval(-100),
+            title: "Atlas plan"
+        )
+        let newerTitle = TrayItem(
+            id: UUID(),
+            text: "Reference",
+            capturedAt: now.addingTimeInterval(-50),
+            title: "Atlas notes"
+        )
+        let snapshot = TraySnapshot(
+            recent: [body, newerTitle, olderTitle],
+            pinned: [],
+            trash: [],
+            collections: []
+        )
+
+        XCTAssertEqual(snapshot.search("atlas").map(\.id), [newerTitle.id, olderTitle.id, body.id])
+    }
+
+    func testSearchTypeAndCollectionFiltersCombine() {
+        let collectionID = UUID()
+        let otherID = UUID()
+        let matching = TrayItem(
+            id: UUID(),
+            kind: .url,
+            text: "https://example.com/atlas",
+            capturedAt: .now,
+            collectionID: collectionID
+        )
+        let wrongType = TrayItem(
+            id: UUID(),
+            text: "Atlas",
+            capturedAt: .now,
+            collectionID: collectionID
+        )
+        let wrongCollection = TrayItem(
+            id: UUID(),
+            kind: .url,
+            text: "https://example.com/atlas-two",
+            capturedAt: .now,
+            collectionID: otherID
+        )
+        let snapshot = TraySnapshot(
+            recent: [matching, wrongType, wrongCollection],
+            pinned: [],
+            trash: [],
+            collections: []
+        )
+
+        let filter = TraySearchFilter(kind: .url, collectionID: collectionID)
+        XCTAssertEqual(snapshot.search("atlas", filter: filter).map(\.id), [matching.id])
+    }
+
+    func testRecentSearchHistoryDeduplicatesRemovesAndRejectsSensitiveQueries() {
+        let sensitive = TrayItem(
+            id: UUID(),
+            text: "Verification code: 739201",
+            capturedAt: .now,
+            sensitivity: SensitivityAssessment(reasons: [.oneTimeCode])
+        )
+        let snapshot = TraySnapshot(
+            recent: [sensitive],
+            pinned: [],
+            trash: [],
+            collections: []
+        )
+
+        var entries = LocalSearchHistory.adding(
+            "Travel",
+            to: ["Work", "travel"],
+            snapshot: snapshot
+        )
+        XCTAssertEqual(entries, ["Travel", "Work"])
+        entries = LocalSearchHistory.adding(
+            "verification code 739201",
+            to: entries,
+            snapshot: snapshot
+        )
+        XCTAssertEqual(entries, ["Travel", "Work"])
+        entries = LocalSearchHistory.removing("Travel", from: entries)
+        XCTAssertEqual(entries, ["Work"])
+
+        let delayedEntries = LocalSearchHistory.sanitized(
+            ["verification code 739201", "Work"],
+            for: snapshot
+        )
+        XCTAssertEqual(delayedEntries, ["Work"])
+    }
 }

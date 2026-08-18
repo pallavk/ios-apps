@@ -169,6 +169,37 @@ final class PocketTrayShellUITests: XCTestCase {
         XCTAssertEqual(object.value as? String, "In collection")
     }
 
+    func testSearchHomeIsUsefulBeforeTypingAndCombinesFilters() {
+        let app = launchApp(withContent: true)
+
+        app.tabBars.buttons["Search"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Recently Saved"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Collections"].exists)
+        XCTAssertFalse(app.staticTexts["Verification code: 739201"].exists)
+
+        let search = app.searchFields["Search Pocket Tray"]
+        search.tap()
+        search.typeText("Trip")
+        XCTAssertTrue(app.staticTexts["Trip notes"].waitForExistence(timeout: 3))
+
+        app.buttons["All"].tap()
+        app.buttons["PDFs"].tap()
+        app.buttons["Any Collection"].tap()
+        app.buttons["Travel"].tap()
+        XCTAssertTrue(app.staticTexts["Trip notes"].exists)
+        XCTAssertFalse(app.staticTexts["Ideas for the weekend"].exists)
+    }
+
+    func testSearchHomeRemainsReachableAtAccessibilityDynamicType() {
+        let app = launchApp(withContent: true, accessibilitySize: true)
+
+        app.tabBars.buttons["Search"].tap()
+        XCTAssertTrue(app.staticTexts["Recently Saved"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["All"].exists)
+        XCTAssertTrue(app.buttons["Any Collection"].exists)
+    }
+
     private func launchApp(
         clipboardAvailable: Bool = false,
         withContent: Bool = false,

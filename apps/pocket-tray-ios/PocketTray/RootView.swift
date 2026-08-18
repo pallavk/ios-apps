@@ -100,6 +100,7 @@ struct RootView: View {
         QuickCopyPreference.key,
         store: QuickCopyPreference.defaults
     ) private var quickCopyOnTap = false
+    @AppStorage("PocketTray.searchHistory") private var searchHistoryStorage = ""
 
     let tray: Tray
     private let clipboard: any TextClipboard
@@ -113,6 +114,10 @@ struct RootView: View {
     @State private var feedback: Feedback?
     @State private var errorMessage: String?
     @State private var searchText = ""
+    @State private var searchKind = SearchKindFilter.all
+    @State private var searchCollectionID: UUID?
+    @State private var isSearchPresented = false
+    @State private var isLoadingSearchMetadata = false
     @State private var presentedSheet: SheetDestination?
     @State private var pendingPermanentDeletion: TrayItem?
     @State private var pendingSensitiveCapture: PreparedTrayCapture?
@@ -178,6 +183,9 @@ struct RootView: View {
                             .tag(section)
                     }
                 }
+                .onChange(of: selectedSection) { _, section in
+                    isSearchPresented = section == .search
+                }
             }
         }
         .task {
@@ -232,6 +240,7 @@ struct RootView: View {
             }
         }
         .animation(.snappy, value: feedback?.id)
+        .onSubmit(of: .search, recordSearch)
         .task(id: feedback?.id) {
             guard let currentFeedback = feedback else { return }
             let feedbackID = currentFeedback.id
@@ -401,7 +410,11 @@ struct RootView: View {
                         sectionContent(section, items: items)
                     } else {
                         sectionContent(section, items: items)
-                            .searchable(text: $searchText, prompt: "Search Pocket Tray")
+                            .searchable(
+                                text: $searchText,
+                                isPresented: $isSearchPresented,
+                                prompt: "Search Pocket Tray"
+                            )
                     }
                 } else {
                     sectionContent(section, items: items)
@@ -463,12 +476,52 @@ struct RootView: View {
             recentContent(items)
         } else if section == .collections {
             collectionsContent
-        } else if section == .search && !searchText.isEmpty && items.isEmpty {
-            ContentUnavailableView.search(text: searchText)
+        } else if section == .search {
+            searchContent(items)
         } else if items.isEmpty {
             emptyState(for: section)
         } else {
             itemList(items)
+        }
+    }
+
+    @ViewBuilder
+    private func searchContent(_ items: [TrayItem]) -> some View {
+        VStack(spacing: 0) {
+            SearchFilterBar(
+                collections: snapshot.collections,
+                kind: $searchKind,
+                collectionID: $searchCollectionID
+            )
+            if searchText.isEmpty && searchKind == .all && searchCollectionID == nil {
+                SearchDiscoveryView(
+                    recentItems: snapshot.recent.filter { !$0.protectsSensitivePreview },
+                    collections: snapshot.collections,
+                    recentSearches: recentSearches,
+                    selectQuery: { searchText = $0 },
+                    selectCollection: { searchCollectionID = $0 },
+                    removeSearch: removeRecentSearch,
+                    openItem: { presentedSheet = .detail($0) }
+                )
+            } else if isLoadingSearchMetadata && items.isEmpty {
+                ProgressView("Searching saved content…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if items.isEmpty {
+                ContentUnavailableView {
+                    Label("No matching objects", systemImage: "magnifyingglass")
+                } description: {
+                    Text("Try another search or clear a filter.")
+                } actions: {
+                    if searchKind != .all || searchCollectionID != nil {
+                        Button("Clear Filters") {
+                            searchKind = .all
+                            searchCollectionID = nil
+                        }
+                    }
+                }
+            } else {
+                itemList(items)
+            }
         }
     }
 
@@ -504,7 +557,14 @@ struct RootView: View {
         switch section {
         case .recent: recentFilter.items(from: snapshot.recent)
         case .collections: []
-        case .search: snapshot.search(searchText)
+        case .search:
+            snapshot.search(
+                searchText,
+                filter: TraySearchFilter(
+                    kind: searchKind.itemKind,
+                    collectionID: searchCollectionID
+                )
+            )
         }
     }
 
@@ -926,10 +986,22 @@ struct RootView: View {
     }
 
     private func reload() async {
+        isLoadingSearchMetadata = true
+        defer { isLoadingSearchMetadata = false }
         do {
             snapshot = try await tray.snapshot()
             await tray.waitForScheduledAnalysis()
             snapshot = try await tray.snapshot(rescheduleMissingAnalysis: false)
+            if
+                let searchCollectionID,
+                !snapshot.collections.contains(where: { $0.id == searchCollectionID })
+            {
+                self.searchCollectionID = nil
+            }
+            let safeHistory = LocalSearchHistory.sanitized(recentSearches, for: snapshot)
+            if safeHistory != recentSearches {
+                searchHistoryStorage = safeHistory.joined(separator: "\n")
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1040,6 +1112,22 @@ struct RootView: View {
         feedback = Feedback(message: message, action: action)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         UIAccessibility.post(notification: .announcement, argument: message)
+    }
+
+    private var recentSearches: [String] {
+        LocalSearchHistory.entries(from: searchHistoryStorage)
+    }
+
+    private func recordSearch() {
+        searchHistoryStorage = LocalSearchHistory
+            .adding(searchText, to: recentSearches, snapshot: snapshot)
+            .joined(separator: "\n")
+    }
+
+    private func removeRecentSearch(_ query: String) {
+        searchHistoryStorage = LocalSearchHistory
+            .removing(query, from: recentSearches)
+            .joined(separator: "\n")
     }
 }
 
