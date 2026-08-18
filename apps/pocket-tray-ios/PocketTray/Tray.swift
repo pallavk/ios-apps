@@ -188,9 +188,7 @@ struct Tray: Sendable {
             trash: store.items
                 .filter { $0.state == .trash }
                 .sorted { ($0.trashedAt ?? .distantPast) > ($1.trashedAt ?? .distantPast) },
-            collections: store.collections.sorted {
-                $0.name.localizedStandardCompare($1.name) == .orderedAscending
-            }
+            collections: store.collections
         )
     }
 
@@ -234,6 +232,25 @@ struct Tray: Sendable {
 
     func deleteCollection(_ id: UUID) async throws {
         guard try await repository.apply(.deleteCollection(id)).succeeded else {
+            throw TrayError.collectionNotFound
+        }
+    }
+
+    func deleteCollectionForUndo(_ id: UUID) async throws -> DeletedCollection {
+        guard let deletion = try await repository.apply(.deleteCollectionForUndo(id)).deletedCollection else {
+            throw TrayError.collectionNotFound
+        }
+        return deletion
+    }
+
+    func restoreDeletedCollection(_ deletion: DeletedCollection) async throws {
+        guard try await repository.apply(.restoreDeletedCollection(deletion)).succeeded else {
+            throw TrayError.collectionNotFound
+        }
+    }
+
+    func reorderCollections(_ ids: [UUID]) async throws {
+        guard try await repository.apply(.reorderCollections(ids)).succeeded else {
             throw TrayError.collectionNotFound
         }
     }

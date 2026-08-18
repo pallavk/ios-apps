@@ -37,6 +37,12 @@ extension TrayStore {
             .collection(renameCollection(id, to: name))
         case let .deleteCollection(id):
             .success(deleteCollection(id))
+        case let .deleteCollectionForUndo(id):
+            .deletedCollection(deleteCollectionForUndo(id))
+        case let .restoreDeletedCollection(deletion):
+            .success(restoreDeletedCollection(deletion))
+        case let .reorderCollections(ids):
+            .success(reorderCollections(ids))
         case let .setAnalysis(id, sourceKey, analysis, sensitivity):
             .item(setAnalysis(
                 analysis,
@@ -114,6 +120,35 @@ extension TrayStore {
             items[itemIndex] = items[itemIndex].assigning(to: nil)
         }
         return true
+    }
+
+    mutating func deleteCollectionForUndo(_ id: UUID) -> DeletedCollection? {
+        guard let index = collections.firstIndex(where: { $0.id == id }) else { return nil }
+        let deletion = DeletedCollection(
+            collection: collections[index],
+            assignedItemIDs: Set(items.filter { $0.collectionID == id }.map(\.id)),
+            index: index
+        )
+        guard deleteCollection(id) else { return nil }
+        return deletion
+    }
+
+    mutating func restoreDeletedCollection(_ deletion: DeletedCollection) -> Bool {
+        guard !collections.contains(where: { $0.id == deletion.collection.id }) else { return false }
+        collections.insert(deletion.collection, at: min(deletion.index, collections.endIndex))
+        for index in items.indices where deletion.assignedItemIDs.contains(items[index].id) {
+            items[index] = items[index].assigning(to: deletion.collection.id)
+        }
+        return true
+    }
+
+    mutating func reorderCollections(_ ids: [UUID]) -> Bool {
+        guard ids.count == collections.count, Set(ids) == Set(collections.map(\.id)) else {
+            return false
+        }
+        let byID = Dictionary(uniqueKeysWithValues: collections.map { ($0.id, $0) })
+        collections = ids.compactMap { byID[$0] }
+        return collections.count == ids.count
     }
 }
 

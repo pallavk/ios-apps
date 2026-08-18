@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import ImageIO
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -99,7 +100,20 @@ struct DirectTextComposer: View {
     @State private var showsDetails = false
     @State private var isSaving = false
     @State private var errorMessage: String?
+
     @State private var isConfirmingSensitiveContent = false
+
+    init(
+        service: DirectCaptureService,
+        collections: [TrayCollection],
+        initialCollectionID: UUID? = nil,
+        onSaved: @escaping (TrayItem) async -> Void
+    ) {
+        self.service = service
+        self.collections = collections
+        self.onSaved = onSaved
+        _collectionID = State(initialValue: initialCollectionID)
+    }
 
     var body: some View {
         NavigationStack {
@@ -114,11 +128,13 @@ struct DirectTextComposer: View {
                         TextField("Title", text: $title)
                         TextField("Note", text: $note, axis: .vertical)
                             .lineLimit(2...5)
-                        Picker("Collection", selection: $collectionID) {
-                            Text("None").tag(UUID?.none)
-                            ForEach(collections) { collection in
-                                Text(collection.name).tag(Optional(collection.id))
-                            }
+                    }
+                }
+                Section("Organization") {
+                    Picker("Save to Collection", selection: $collectionID) {
+                        Text("None").tag(UUID?.none)
+                        ForEach(collections) { collection in
+                            Text(collection.name).tag(Optional(collection.id))
                         }
                     }
                 }
@@ -179,6 +195,130 @@ struct DirectTextComposer: View {
             }
         } catch TrayError.sensitiveContentRequiresAcknowledgment(_) {
             isConfirmingSensitiveContent = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct DirectMediaComposer: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let content: CaptureContent
+    let service: DirectCaptureService
+    let collections: [TrayCollection]
+    let onSaved: (TrayItem) async -> Void
+    private let previewImage: UIImage?
+
+    @State private var title = ""
+    @State private var note = ""
+    @State private var collectionID: UUID?
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(
+        content: CaptureContent,
+        service: DirectCaptureService,
+        collections: [TrayCollection],
+        onSaved: @escaping (TrayItem) async -> Void
+    ) {
+        self.content = content
+        self.service = service
+        self.collections = collections
+        self.onSaved = onSaved
+        previewImage = Self.makePreviewImage(for: content)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    preview
+                        .frame(maxWidth: .infinity)
+                }
+                Section("Details") {
+                    TextField("Title (optional)", text: $title)
+                    TextField("Note (optional)", text: $note, axis: .vertical)
+                        .lineLimit(2...5)
+                    Picker("Save to Collection", selection: $collectionID) {
+                        Text("None").tag(UUID?.none)
+                        ForEach(collections) { collection in
+                            Text(collection.name).tag(Optional(collection.id))
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Save Photo")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Saving…" : "Save") { Task { await save() } }
+                        .disabled(isSaving)
+                }
+            }
+        }
+        .alert("Couldn't save that photo", isPresented: isShowingError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "Please try again.")
+        }
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        if let previewImage {
+            Image(uiImage: previewImage)
+                .resizable()
+                .scaledToFit()
+                .frame(maxHeight: 280)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .accessibilityLabel("Photo selected for saving")
+        } else {
+            Label("Selected media", systemImage: "photo")
+                .foregroundStyle(.secondary)
+                .frame(minHeight: 160)
+        }
+    }
+
+    private var isShowingError: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private static func makePreviewImage(for content: CaptureContent) -> UIImage? {
+        guard case let .image(payload) = content else { return nil }
+        guard let source = CGImageSourceCreateWithData(payload.data as CFData, nil) else {
+            return nil
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 1_200,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+        return UIImage(cgImage: thumbnail)
+    }
+
+    private func save() async {
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            if let item = try await service.capture(
+                content,
+                details: DirectCaptureDetails(
+                    title: title,
+                    note: note,
+                    collectionID: collectionID
+                )
+            ) {
+                await onSaved(item)
+                dismiss()
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -2,24 +2,115 @@ import SwiftUI
 import UIKit
 
 struct TrayObjectDetailView: View {
-    let item: TrayItem
-    let collectionName: String?
+    let collections: [TrayCollection]
     let tray: Tray
     let clipboard: any TextClipboard
+    let onChanged: () async -> Void
+
+    @State private var item: TrayItem
+    @State private var isAssigningCollection = false
+    @State private var undoItem: TrayItem?
+    @State private var feedbackMessage: String?
+    @State private var feedbackID: UUID?
+    @State private var errorMessage: String?
+
+    init(
+        item: TrayItem,
+        collections: [TrayCollection],
+        tray: Tray,
+        clipboard: any TextClipboard,
+        onChanged: @escaping () async -> Void
+    ) {
+        self.collections = collections
+        self.tray = tray
+        self.clipboard = clipboard
+        self.onChanged = onChanged
+        _item = State(initialValue: item)
+    }
 
     @ViewBuilder
     var body: some View {
-        switch item.kind {
-        case .text, .url:
-            TrayTextDetailView(
-                item: item,
-                collectionName: collectionName,
-                clipboard: clipboard
-            )
-        case .image:
-            TrayImageDetailView(item: item, collectionName: collectionName, tray: tray)
-        case .pdf:
-            TrayPDFDetailView(item: item, collectionName: collectionName, tray: tray)
+        Group {
+            switch item.kind {
+            case .text, .url:
+                TrayTextDetailView(
+                    item: item,
+                    collectionName: collectionName,
+                    clipboard: clipboard,
+                    manageCollection: { isAssigningCollection = true }
+                )
+            case .image:
+                TrayImageDetailView(
+                    item: item,
+                    collectionName: collectionName,
+                    tray: tray,
+                    manageCollection: { isAssigningCollection = true }
+                )
+            case .pdf:
+                TrayPDFDetailView(
+                    item: item,
+                    collectionName: collectionName,
+                    tray: tray,
+                    manageCollection: { isAssigningCollection = true }
+                )
+            }
+        }
+        .sheet(isPresented: $isAssigningCollection) {
+            CollectionAssignmentView(item: item, collections: collections, tray: tray) { updated in
+                undoItem = item
+                item = updated
+                feedbackMessage = updated.collectionID == nil
+                    ? "Removed from Collection"
+                    : "Collection updated"
+                feedbackID = UUID()
+                await onChanged()
+            }
+        }
+        .overlay(alignment: .top) {
+            if let feedbackMessage, undoItem != nil {
+                FeedbackToast(message: feedbackMessage, actionTitle: "Undo") {
+                    undoCollectionChange()
+                }
+                .padding(.horizontal)
+                .safeAreaPadding(.top, 8)
+            }
+        }
+        .task(id: feedbackID) {
+            guard let id = feedbackID else { return }
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, feedbackID == id else { return }
+            undoItem = nil
+            feedbackMessage = nil
+            feedbackID = nil
+        }
+        .alert("Couldn't undo that change", isPresented: isShowingError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "Please try again.")
+        }
+    }
+
+    private var collectionName: String? {
+        guard let collectionID = item.collectionID else { return nil }
+        return collections.first { $0.id == collectionID }?.name
+    }
+
+    private var isShowingError: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private func undoCollectionChange() {
+        guard let original = undoItem else { return }
+        Task {
+            do {
+                item = try await tray.restoreStateFromUndo(original)
+                undoItem = nil
+                feedbackMessage = nil
+                feedbackID = nil
+                await onChanged()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -31,6 +122,7 @@ private struct TrayTextDetailView: View {
     let item: TrayItem
     let collectionName: String?
     let clipboard: any TextClipboard
+    let manageCollection: () -> Void
 
     @State private var copied = false
     @State private var errorMessage: String?
@@ -89,7 +181,11 @@ private struct TrayTextDetailView: View {
                 }
 
                 Divider()
-                TrayDetailMetadata(item: item, collectionName: collectionName)
+                TrayDetailMetadata(
+                    item: item,
+                    collectionName: collectionName,
+                    manageCollection: manageCollection
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
@@ -177,11 +273,22 @@ private struct TrayTextDetailView: View {
 struct TrayDetailMetadata: View {
     let item: TrayItem
     let collectionName: String?
+    var manageCollection: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let collectionName {
                 Label(collectionName, systemImage: "folder")
+            }
+            if let manageCollection {
+                Button(action: manageCollection) {
+                    Label(
+                        collectionName == nil ? "Add to Collection" : "Move or Remove Collection",
+                        systemImage: "folder"
+                    )
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
             }
             TraySensitivityMetadata(item: item)
             if item.isPinned {

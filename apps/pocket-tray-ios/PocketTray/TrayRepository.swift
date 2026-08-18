@@ -12,6 +12,9 @@ enum TrayMutation: Sendable {
     case assign(UUID, UUID?, Date)
     case renameCollection(UUID, String)
     case deleteCollection(UUID)
+    case deleteCollectionForUndo(UUID)
+    case restoreDeletedCollection(DeletedCollection)
+    case reorderCollections([UUID])
     case setAnalysis(UUID, sourceKey: String, ContentAnalysis, SensitivityAssessment?)
     case setSensitivityOverridden(UUID, Bool)
 }
@@ -19,6 +22,7 @@ enum TrayMutation: Sendable {
 enum TrayMutationResult: Sendable {
     case item(TrayItem?)
     case collection(TrayCollection?)
+    case deletedCollection(DeletedCollection?)
     case success(Bool)
 
     var item: TrayItem? {
@@ -47,6 +51,21 @@ enum TrayMutationResult: Sendable {
             return succeeded
         }
     }
+
+    var deletedCollection: DeletedCollection? {
+        get throws {
+            guard case let .deletedCollection(deletion) = self else {
+                throw TrayRepositoryContractError.unexpectedMutationResult
+            }
+            return deletion
+        }
+    }
+}
+
+struct DeletedCollection: Equatable, Sendable {
+    let collection: TrayCollection
+    let assignedItemIDs: Set<UUID>
+    let index: Int
 }
 
 private enum TrayRepositoryContractError: Error {

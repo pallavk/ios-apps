@@ -123,6 +123,52 @@ final class PocketTrayShellUITests: XCTestCase {
         XCTAssertTrue(app.buttons["detail-primary-action"].waitForExistence(timeout: 3))
     }
 
+    func testCollectionsUseContentLedCardsAndUsefulEmptyState() {
+        let app = launchApp(withContent: true)
+
+        app.tabBars.buttons["Collections"].tap()
+        XCTAssertTrue(app.buttons["Projects, 1 object"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Travel, 3 objects"].exists)
+        XCTAssertTrue(app.buttons["Inbox, 0 objects"].exists)
+        XCTAssertTrue(app.buttons["Options for Projects"].exists)
+
+        app.buttons["Inbox, 0 objects"].tap()
+        XCTAssertTrue(app.staticTexts["Collection is empty"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Add Existing Objects"].exists)
+        XCTAssertTrue(app.buttons["Add New Text"].exists)
+    }
+
+    func testDeletingCollectionKeepsObjectsAndOffersUndo() {
+        let app = launchApp(withContent: true)
+
+        app.tabBars.buttons["Collections"].tap()
+        app.buttons["Options for Projects"].tap()
+        app.buttons["Delete Collection"].tap()
+        XCTAssertTrue(app.staticTexts["Collection deleted. Objects kept."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Undo"].exists)
+        app.buttons["Undo"].tap()
+        XCTAssertTrue(app.buttons["Projects, 1 object"].waitForExistence(timeout: 3))
+    }
+
+    func testRepeatedCollectionMovesUndoToTheImmediatelyPreviousState() {
+        let app = launchApp(withContent: true)
+
+        app.tabBars.buttons["Collections"].tap()
+        app.buttons["Travel, 3 objects"].tap()
+        app.buttons["Add Existing Objects"].tap()
+
+        let object = app.buttons["Pickleball court setup"]
+        XCTAssertTrue(object.waitForExistence(timeout: 3))
+        XCTAssertEqual(object.value as? String, "Not in collection")
+        object.tap()
+        XCTAssertEqual(object.value as? String, "In collection")
+        object.tap()
+        XCTAssertEqual(object.value as? String, "Not in collection")
+
+        app.buttons["Undo"].tap()
+        XCTAssertEqual(object.value as? String, "In collection")
+    }
+
     private func launchApp(
         clipboardAvailable: Bool = false,
         withContent: Bool = false,

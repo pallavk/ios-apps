@@ -40,6 +40,17 @@ enum PocketTrayUITestFixtures {
             name: "Projects",
             createdAt: calendar.date(byAdding: .day, value: -10, to: today)!
         )
+        let travelID = UUID(uuidString: "C011EC71-0000-4000-8000-000000000002")!
+        let travel = TrayCollection(
+            id: travelID,
+            name: "Travel",
+            createdAt: calendar.date(byAdding: .day, value: -8, to: today)!
+        )
+        let inbox = TrayCollection(
+            id: UUID(uuidString: "C011EC71-0000-4000-8000-000000000003")!,
+            name: "Inbox",
+            createdAt: calendar.date(byAdding: .day, value: -6, to: today)!
+        )
         let items = [
             TrayItem(
                 id: UUID(uuidString: "17E00000-0000-4000-8000-000000000001")!,
@@ -60,6 +71,7 @@ enum PocketTrayUITestFixtures {
                 text: "coastline.png",
                 capturedAt: todayDate(secondsAgo: 20_000),
                 title: "Bintan coastline",
+                collectionID: travelID,
                 asset: imageWrite.asset
             ),
             TrayItem(
@@ -68,6 +80,7 @@ enum PocketTrayUITestFixtures {
                 text: "trip-notes.pdf",
                 capturedAt: yesterday.addingTimeInterval(12 * 3_600),
                 title: "Trip notes",
+                collectionID: travelID,
                 asset: pdfWrite.asset
             ),
             TrayItem(
@@ -103,12 +116,13 @@ enum PocketTrayUITestFixtures {
                 id: UUID(uuidString: "17E00000-0000-4000-8000-000000000008")!,
                 text: "护照、充电器、药品、耳机 · Passport, charger, medication, headphones",
                 capturedAt: earlier.addingTimeInterval(10 * 3_600),
-                title: "Travel checklist · 旅行清单"
+                title: "Travel checklist · 旅行清单",
+                collectionID: travelID
             )
         ]
         return InMemoryTrayRepository(
             items: items,
-            collections: [collection],
+            collections: [collection, travel, inbox],
             assetDirectoryURL: assetDirectory
         )
     }

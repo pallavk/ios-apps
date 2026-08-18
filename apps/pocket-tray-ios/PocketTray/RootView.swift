@@ -46,6 +46,9 @@ enum RecentFilter: CaseIterable, Hashable {
 struct RootView: View {
     private enum UndoOperation {
         case restoreState(TrayItem)
+        case renameCollection(UUID, String)
+        case restoreCollectionOrder([UUID])
+        case restoreDeletedCollection(DeletedCollection)
     }
 
     private enum FeedbackAction {
@@ -65,7 +68,8 @@ struct RootView: View {
         case assignCollection(TrayItem)
         case addItems(TrayCollection)
         case editItem(TrayItem)
-        case newText
+        case newMedia(CaptureContent)
+        case newText(UUID?)
         case previewImage(TrayItem)
         case previewPDF(TrayItem)
         case renameCollection(TrayCollection)
@@ -79,7 +83,8 @@ struct RootView: View {
             case let .assignCollection(item): "assign-collection-\(item.id)"
             case let .addItems(collection): "add-items-\(collection.id)"
             case let .editItem(item): "edit-item-\(item.id)"
-            case .newText: "new-text"
+            case .newMedia: "new-media"
+            case let .newText(collectionID): "new-text-\(collectionID?.uuidString ?? "none")"
             case let .previewImage(item): "preview-image-\(item.id)"
             case let .previewPDF(item): "preview-pdf-\(item.id)"
             case let .renameCollection(collection): "rename-collection-\(collection.id)"
@@ -109,7 +114,6 @@ struct RootView: View {
     @State private var errorMessage: String?
     @State private var searchText = ""
     @State private var presentedSheet: SheetDestination?
-    @State private var pendingCollectionDeletion: TrayCollection?
     @State private var pendingPermanentDeletion: TrayItem?
     @State private var pendingSensitiveCapture: PreparedTrayCapture?
     @State private var pendingClipboardSaveChangeCount: Int?
@@ -122,6 +126,7 @@ struct RootView: View {
     @State private var isPresentingPhotoPicker = false
     @State private var isLoadingDirectCapture = false
     @State private var isPresentingCamera = false
+    @State private var pendingCameraContent: CaptureContent?
     @State private var isShowingCameraPermissionHelp = false
 
     init(
@@ -242,22 +247,28 @@ struct RootView: View {
                     title: String(localized: "New Collection"),
                     initialName: "",
                     tray: tray
-                ) {
+                ) { _ in
                     await reload()
                 }
             case let .detail(item):
                 TrayObjectDetailView(
                     item: item,
-                    collectionName: collectionName(for: item),
+                    collections: snapshot.collections,
                     tray: tray,
                     clipboard: clipboard
-                )
+                ) { await reload() }
             case let .assignCollection(item):
                 CollectionAssignmentView(
                     item: item,
                     collections: snapshot.collections,
                     tray: tray
-                ) {
+                ) { updated in
+                    showFeedback(
+                        updated.collectionID == nil
+                            ? String(localized: "Removed from Collection")
+                            : String(localized: "Collection updated"),
+                        action: .undo(.restoreState(item))
+                    )
                     await reload()
                 }
             case let .addItems(collection):
@@ -273,10 +284,19 @@ struct RootView: View {
                 ItemEditor(item: item, collections: snapshot.collections, tray: tray) {
                     await reload()
                 }
-            case .newText:
-                DirectTextComposer(
+            case let .newMedia(content):
+                DirectMediaComposer(
+                    content: content,
                     service: DirectCaptureService(tray: tray),
                     collections: snapshot.collections
+                ) { item in
+                    await directCaptureDidSave(item)
+                }
+            case let .newText(collectionID):
+                DirectTextComposer(
+                    service: DirectCaptureService(tray: tray),
+                    collections: snapshot.collections,
+                    initialCollectionID: collectionID
                 ) { item in
                     await directCaptureDidSave(item)
                 }
@@ -290,7 +310,11 @@ struct RootView: View {
                     initialName: collection.name,
                     tray: tray,
                     collectionID: collection.id
-                ) {
+                ) { _ in
+                    showFeedback(
+                        String(localized: "Collection renamed"),
+                        action: .undo(.renameCollection(collection.id, collection.name))
+                    )
                     await reload()
                 }
             case .settings:
@@ -323,11 +347,10 @@ struct RootView: View {
         } message: {
             Text("Allow camera access in Settings to take photos directly in Pocket Tray.")
         }
-        .fullScreenCover(isPresented: $isPresentingCamera) {
+        .fullScreenCover(isPresented: $isPresentingCamera, onDismiss: presentPendingCameraContent) {
             CameraCaptureView { content in
+                pendingCameraContent = content
                 isPresentingCamera = false
-                guard let content else { return }
-                Task { await saveDirectCaptureReportingErrors(content) }
             }
             .ignoresSafeArea()
         }
@@ -364,20 +387,6 @@ struct RootView: View {
             }
         } message: {
             Text("This cannot be undone.")
-        }
-        .confirmationDialog(
-            "Delete this collection?",
-            isPresented: isConfirmingCollectionDeletion,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Collection", role: .destructive) {
-                if let collection = pendingCollectionDeletion {
-                    deleteCollection(collection)
-                }
-            }
-            Button("Cancel", role: .cancel) { pendingCollectionDeletion = nil }
-        } message: {
-            Text("Objects in it will remain in Pocket Tray.")
         }
     }
 
@@ -442,7 +451,7 @@ struct RootView: View {
     private var captureBarActions: CaptureBarActions {
         CaptureBarActions(
             saveClipboard: captureCurrentClipboard,
-            newText: { presentedSheet = .newText },
+            newText: { presentedSheet = .newText(nil) },
             choosePhoto: { isPresentingPhotoPicker = true },
             takePhoto: requestCameraCapture
         )
@@ -531,53 +540,96 @@ struct RootView: View {
                     .buttonStyle(.borderedProminent)
             }
         } else {
-            List {
-                ForEach(snapshot.collections) { collection in
-                    NavigationLink {
-                        let collectionItems = snapshot.recent.filter {
-                            $0.collectionID == collection.id
-                        }
-                        Group {
-                            if collectionItems.isEmpty {
-                                ContentUnavailableView(
-                                    "Collection is empty",
-                                    systemImage: "folder",
-                                    description: Text("Use Add Items to place existing objects here.")
+            ScrollView {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 14),
+                        GridItem(.flexible(), spacing: 14),
+                    ],
+                    spacing: 24
+                ) {
+                    ForEach(snapshot.collections) { collection in
+                        ZStack(alignment: .topTrailing) {
+                            NavigationLink {
+                                collectionDetail(collection)
+                            } label: {
+                                CollectionCard(
+                                    collection: collection,
+                                    items: items(in: collection),
+                                    tray: tray
                                 )
-                            } else {
-                                itemList(collectionItems)
                             }
-                        }
-                        .navigationTitle(collection.name)
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Button { presentedSheet = .addItems(collection) } label: {
-                                    Label("Add Items", systemImage: "plus")
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Label(collection.name, systemImage: "folder")
-                            Spacer()
-                            Text(snapshot.recent.count { $0.collectionID == collection.id }, format: .number)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                        Button { presentedSheet = .renameCollection(collection) } label: {
-                            Label("Rename", systemImage: "pencil")
-                        }
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) { pendingCollectionDeletion = collection } label: {
-                            Label("Delete", systemImage: "trash")
+                            .buttonStyle(.plain)
+
+                            collectionOptions(collection)
+                                .padding(8)
                         }
                     }
                 }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
             }
-            .listStyle(.plain)
         }
+    }
+
+    @ViewBuilder
+    private func collectionDetail(_ collection: TrayCollection) -> some View {
+        let collectionItems = items(in: collection)
+        Group {
+            if collectionItems.isEmpty {
+                ContentUnavailableView {
+                    Label("Collection is empty", systemImage: "folder")
+                } description: {
+                    Text("Add an existing object, or create new text here.")
+                } actions: {
+                    Button("Add Existing Objects") { presentedSheet = .addItems(collection) }
+                        .buttonStyle(.borderedProminent)
+                    Button("Add New Text") { presentedSheet = .newText(collection.id) }
+                        .buttonStyle(.bordered)
+                }
+            } else {
+                itemList(collectionItems)
+            }
+        }
+        .navigationTitle(collection.name)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { presentedSheet = .addItems(collection) } label: {
+                    Label("Add Existing Objects", systemImage: "plus")
+                }
+            }
+        }
+    }
+
+    private func collectionOptions(_ collection: TrayCollection) -> some View {
+        let index = snapshot.collections.firstIndex(where: { $0.id == collection.id }) ?? 0
+        return Menu {
+            Button { presentedSheet = .renameCollection(collection) } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            Button { moveCollection(collection, by: -1) } label: {
+                Label("Move Earlier", systemImage: "arrow.up")
+            }
+            .disabled(index == snapshot.collections.startIndex)
+            Button { moveCollection(collection, by: 1) } label: {
+                Label("Move Later", systemImage: "arrow.down")
+            }
+            .disabled(index == snapshot.collections.index(before: snapshot.collections.endIndex))
+            Divider()
+            Button(role: .destructive) { deleteCollection(collection) } label: {
+                Label("Delete Collection", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.subheadline.weight(.semibold))
+                .frame(width: 32, height: 32)
+                .background(.regularMaterial, in: Circle())
+        }
+        .accessibilityLabel("Options for \(collection.name)")
+    }
+
+    private func items(in collection: TrayCollection) -> [TrayItem] {
+        snapshot.recent.filter { $0.collectionID == collection.id }
     }
 
     @ViewBuilder
@@ -628,11 +680,6 @@ struct RootView: View {
         )
     }
 
-    private func collectionName(for item: TrayItem) -> String? {
-        guard let collectionID = item.collectionID else { return nil }
-        return snapshot.collections.first { $0.id == collectionID }?.name
-    }
-
     private var isShowingError: Binding<Bool> {
         Binding(
             get: { errorMessage != nil },
@@ -660,13 +707,6 @@ struct RootView: View {
         }
         let labels = SensitiveContentReason.ordered(reasons).map(\.warningLabel)
         return String(localized: "Pocket Tray found possible sensitive content: \(labels.joined(separator: ", ")). Save it only if you intend to keep it here.")
-    }
-
-    private var isConfirmingCollectionDeletion: Binding<Bool> {
-        Binding(
-            get: { pendingCollectionDeletion != nil },
-            set: { if !$0 { pendingCollectionDeletion = nil } }
-        )
     }
 
     private func capture(_ text: String?) {
@@ -760,9 +800,33 @@ struct RootView: View {
     }
 
     private func deleteCollection(_ collection: TrayCollection) {
-        pendingCollectionDeletion = nil
-        perform(String(localized: "Collection deleted")) {
-            try await tray.deleteCollection(collection.id)
+        Task {
+            do {
+                let deletion = try await tray.deleteCollectionForUndo(collection.id)
+                showFeedback(
+                    String(localized: "Collection deleted. Objects kept."),
+                    action: .undo(.restoreDeletedCollection(deletion))
+                )
+                await reload()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func moveCollection(_ collection: TrayCollection, by offset: Int) {
+        let originalIDs = snapshot.collections.map(\.id)
+        guard
+            let source = snapshot.collections.firstIndex(where: { $0.id == collection.id }),
+            snapshot.collections.indices.contains(source + offset)
+        else { return }
+        var reorderedIDs = originalIDs
+        reorderedIDs.swapAt(source, source + offset)
+        perform(
+            String(localized: "Collection moved"),
+            feedbackAction: .undo(.restoreCollectionOrder(originalIDs))
+        ) {
+            try await tray.reorderCollections(reorderedIDs)
         }
     }
 
@@ -795,6 +859,12 @@ struct RootView: View {
             switch operation {
             case let .restoreState(original):
                 _ = try await tray.restoreStateFromUndo(original)
+            case let .renameCollection(id, name):
+                _ = try await tray.renameCollection(id, to: name)
+            case let .restoreCollectionOrder(ids):
+                try await tray.reorderCollections(ids)
+            case let .restoreDeletedCollection(deletion):
+                try await tray.restoreDeletedCollection(deletion)
             }
         }
     }
@@ -925,7 +995,7 @@ struct RootView: View {
         }
         do {
             let content = try await DirectPhotoLoader.load(selection)
-            try await saveDirectCapture(content)
+            presentedSheet = .newMedia(content)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -945,18 +1015,10 @@ struct RootView: View {
         }
     }
 
-    private func saveDirectCapture(_ content: CaptureContent) async throws {
-        if let item = try await DirectCaptureService(tray: tray).capture(content) {
-            await directCaptureDidSave(item)
-        }
-    }
-
-    private func saveDirectCaptureReportingErrors(_ content: CaptureContent) async {
-        do {
-            try await saveDirectCapture(content)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+    private func presentPendingCameraContent() {
+        guard let content = pendingCameraContent else { return }
+        pendingCameraContent = nil
+        presentedSheet = .newMedia(content)
     }
 
     private func directCaptureDidSave(_ item: TrayItem) async {

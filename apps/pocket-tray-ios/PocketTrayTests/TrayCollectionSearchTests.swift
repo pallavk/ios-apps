@@ -44,6 +44,68 @@ final class TrayCollectionSearchTests: XCTestCase {
         XCTAssertNil(snapshot.recent.first?.collectionID)
     }
 
+    func testCollectionsCanBeReorderedAndPersistThatOrder() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let first = try await tray.createCollection(named: "First")
+        let second = try await tray.createCollection(named: "Second")
+        let third = try await tray.createCollection(named: "Third")
+
+        try await tray.reorderCollections([third.id, first.id, second.id])
+        let snapshot = try await tray.snapshot()
+
+        XCTAssertEqual(snapshot.collections.map(\.id), [third.id, first.id, second.id])
+    }
+
+    func testDeletedCollectionCanBeUndoneWithoutLosingAssignments() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let collection = try await tray.createCollection(named: "Reference")
+        let item = try await tray.capture(.text("Keep me organized"))
+        _ = try await tray.assign(item.id, to: collection.id)
+
+        let deletion = try await tray.deleteCollectionForUndo(collection.id)
+        try await tray.restoreDeletedCollection(deletion)
+        let snapshot = try await tray.snapshot()
+
+        XCTAssertEqual(snapshot.collections, [collection])
+        XCTAssertEqual(snapshot.recent.first?.collectionID, collection.id)
+    }
+
+    func testRenamedCollectionCanBeRestoredToItsPreviousName() async throws {
+        let tray = Tray(repository: InMemoryTrayRepository())
+        let collection = try await tray.createCollection(named: "Original")
+
+        _ = try await tray.renameCollection(collection.id, to: "Updated")
+        _ = try await tray.renameCollection(collection.id, to: collection.name)
+
+        let snapshot = try await tray.snapshot()
+        XCTAssertEqual(snapshot.collections.first?.name, "Original")
+    }
+
+    func testCollectionCoverUsesRecentNonSensitiveObjectsAndSafeFallbacks() {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let text = TrayItem(id: UUID(), text: "Visible text", capturedAt: now)
+        let link = TrayItem(
+            id: UUID(),
+            kind: .url,
+            text: "https://example.com",
+            capturedAt: now.addingTimeInterval(-1)
+        )
+        let sensitive = TrayItem(
+            id: UUID(),
+            text: "Verification code: 739201",
+            capturedAt: now.addingTimeInterval(-2),
+            sensitivity: SensitivityAssessment(reasons: [.oneTimeCode])
+        )
+
+        let mixed = CollectionCoverContent(items: [sensitive, text, link])
+        let sensitiveOnly = CollectionCoverContent(items: [sensitive])
+
+        XCTAssertEqual(mixed.tiles.map(\.id), [text.id, link.id])
+        XCTAssertEqual(mixed.fallback, nil)
+        XCTAssertEqual(sensitiveOnly.tiles, [])
+        XCTAssertEqual(sensitiveOnly.fallback, .sensitive)
+    }
+
     func testSearchCoversTextURLsTitlesNotesAndCollectionNames() async throws {
         let repository = InMemoryTrayRepository()
         let tray = Tray(repository: repository)

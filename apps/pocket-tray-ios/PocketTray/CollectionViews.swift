@@ -1,13 +1,130 @@
 import SwiftUI
 import UIKit
 
+enum CollectionCoverFallback: Equatable {
+    case empty
+    case sensitive
+}
+
+struct CollectionCoverContent: Equatable {
+    let tiles: [TrayItem]
+    let fallback: CollectionCoverFallback?
+
+    init(items: [TrayItem]) {
+        tiles = Array(items.filter { !$0.protectsSensitivePreview }.prefix(4))
+        if !tiles.isEmpty {
+            fallback = nil
+        } else if items.contains(where: \.protectsSensitivePreview) {
+            fallback = .sensitive
+        } else {
+            fallback = .empty
+        }
+    }
+}
+
+struct CollectionCard: View {
+    let collection: TrayCollection
+    let items: [TrayItem]
+    let tray: Tray
+
+    private var cover: CollectionCoverContent { CollectionCoverContent(items: items) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            coverView
+                .aspectRatio(1.35, contentMode: .fit)
+
+            Text(collection.name)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+            Text("\(items.count) \(items.count == 1 ? "object" : "objects")")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(collection.name), \(items.count) \(items.count == 1 ? "object" : "objects")")
+        .accessibilityHint("Opens this collection")
+    }
+
+    @ViewBuilder
+    private var coverView: some View {
+        if cover.tiles.isEmpty {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18).fill(.quaternary)
+                VStack(spacing: 8) {
+                    Image(systemName: cover.fallback == .sensitive ? "eye.slash" : "tray")
+                        .font(.title2)
+                    Text(cover.fallback == .sensitive ? "Contents hidden" : "Ready for objects")
+                        .font(.caption)
+                }
+                .foregroundStyle(.secondary)
+            }
+        } else {
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)],
+                spacing: 4
+            ) {
+                ForEach(cover.tiles) { item in
+                    CollectionCoverTile(item: item, tray: tray)
+                }
+            }
+            .padding(4)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 18))
+        }
+    }
+}
+
+private struct CollectionCoverTile: View {
+    let item: TrayItem
+    let tray: Tray
+
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemBackground))
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipped()
+            } else {
+                VStack(spacing: 5) {
+                    Image(systemName: item.kind.systemImage)
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    if item.kind == .text || item.kind == .url {
+                    Text(item.title ?? item.text)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 4)
+                    }
+                }
+            }
+        }
+        .accessibilityHidden(true)
+        .task(id: item.asset?.digest) {
+            guard item.kind == .image else { return }
+            image = try? await TrayImageLoader.thumbnail(
+                for: item,
+                tray: tray,
+                maxPixelSize: 320
+            ).image
+        }
+    }
+}
+
 struct CollectionAssignmentView: View {
     @Environment(\.dismiss) private var dismiss
 
     let item: TrayItem
     let collections: [TrayCollection]
     let tray: Tray
-    let onSaved: () async -> Void
+    let onSaved: (TrayItem) async -> Void
 
     @State private var collectionID: UUID?
     @State private var errorMessage: String?
@@ -17,7 +134,7 @@ struct CollectionAssignmentView: View {
         item: TrayItem,
         collections: [TrayCollection],
         tray: Tray,
-        onSaved: @escaping () async -> Void
+        onSaved: @escaping (TrayItem) async -> Void
     ) {
         self.item = item
         self.collections = collections
@@ -33,8 +150,8 @@ struct CollectionAssignmentView: View {
                     Text(item.title ?? item.text)
                         .lineLimit(3)
                 }
-                Section("Collection") {
-                    Picker("Collection", selection: $collectionID) {
+                Section("Save to Collection") {
+                    Picker("Save to Collection", selection: $collectionID) {
                         Text("None").tag(UUID?.none)
                         ForEach(collections) { collection in
                             Text(collection.name).tag(Optional(collection.id))
@@ -75,8 +192,8 @@ struct CollectionAssignmentView: View {
         isSaving = true
         defer { isSaving = false }
         do {
-            _ = try await tray.assign(item.id, to: collectionID)
-            await onSaved()
+            let updated = try await tray.assign(item.id, to: collectionID)
+            await onSaved(updated)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -93,8 +210,12 @@ struct CollectionItemPicker: View {
     let onChanged: () async -> Void
 
     @State private var selectedIDs: Set<UUID>
+    @State private var currentItems: [UUID: TrayItem]
     @State private var updatingIDs: Set<UUID> = []
     @State private var errorMessage: String?
+    @State private var undoItem: TrayItem?
+    @State private var feedbackMessage: String?
+    @State private var feedbackID: UUID?
 
     init(
         collection: TrayCollection,
@@ -110,6 +231,9 @@ struct CollectionItemPicker: View {
         self.onChanged = onChanged
         _selectedIDs = State(
             initialValue: Set(items.filter { $0.collectionID == collection.id }.map(\.id))
+        )
+        _currentItems = State(
+            initialValue: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         )
     }
 
@@ -134,8 +258,8 @@ struct CollectionItemPicker: View {
                                         .foregroundStyle(.primary)
                                         .lineLimit(2)
                                     if
-                                        item.collectionID != nil,
-                                        item.collectionID != collection.id,
+                                        currentItems[item.id]?.collectionID != nil,
+                                        currentItems[item.id]?.collectionID != collection.id,
                                         let currentName = collectionName(for: item)
                                     {
                                         Text("Currently in \(currentName)")
@@ -167,7 +291,7 @@ struct CollectionItemPicker: View {
                     .listStyle(.plain)
                 }
             }
-            .navigationTitle("Add Items")
+            .navigationTitle("Add Existing Objects")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -180,6 +304,25 @@ struct CollectionItemPicker: View {
         } message: {
             Text(errorMessage ?? "Please try again.")
         }
+        .overlay(alignment: .top) {
+            if let feedbackMessage, undoItem != nil {
+                FeedbackToast(message: feedbackMessage, actionTitle: "Undo") {
+                    undoLastChange()
+                }
+                .padding(.horizontal)
+                .safeAreaPadding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: feedbackMessage)
+        .task(id: feedbackID) {
+            guard let id = feedbackID else { return }
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, feedbackID == id else { return }
+            undoItem = nil
+            feedbackMessage = nil
+            feedbackID = nil
+        }
     }
 
     private var isShowingError: Binding<Bool> {
@@ -187,22 +330,50 @@ struct CollectionItemPicker: View {
     }
 
     private func collectionName(for item: TrayItem) -> String? {
-        collections.first { $0.id == item.collectionID }?.name
+        collections.first { $0.id == currentItems[item.id]?.collectionID }?.name
     }
 
     private func toggle(_ item: TrayItem) {
-        let shouldAdd = !selectedIDs.contains(item.id)
+        let original = currentItems[item.id] ?? item
+        let shouldAdd = original.collectionID != collection.id
         updatingIDs.insert(item.id)
         Task {
             defer { updatingIDs.remove(item.id) }
             do {
-                _ = try await tray.assign(item.id, to: shouldAdd ? collection.id : nil)
+                let updated = try await tray.assign(item.id, to: shouldAdd ? collection.id : nil)
+                currentItems[item.id] = updated
                 if shouldAdd {
                     selectedIDs.insert(item.id)
                 } else {
                     selectedIDs.remove(item.id)
                 }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                undoItem = original
+                feedbackMessage = shouldAdd ? "Added to Collection" : "Removed from Collection"
+                feedbackID = UUID()
+                await onChanged()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func undoLastChange() {
+        guard let original = undoItem else { return }
+        undoItem = nil
+        feedbackMessage = nil
+        feedbackID = nil
+        updatingIDs.insert(original.id)
+        Task {
+            defer { updatingIDs.remove(original.id) }
+            do {
+                let restored = try await tray.restoreStateFromUndo(original)
+                currentItems[original.id] = restored
+                if original.collectionID == collection.id {
+                    selectedIDs.insert(original.id)
+                } else {
+                    selectedIDs.remove(original.id)
+                }
                 await onChanged()
             } catch {
                 errorMessage = error.localizedDescription
@@ -228,7 +399,7 @@ struct CollectionEditor: View {
     let title: String
     let tray: Tray
     let collectionID: UUID?
-    let onSaved: () async -> Void
+    let onSaved: (TrayCollection) async -> Void
     @State private var name: String
     @State private var errorMessage: String?
     @State private var isSaving = false
@@ -238,7 +409,7 @@ struct CollectionEditor: View {
         initialName: String,
         tray: Tray,
         collectionID: UUID? = nil,
-        onSaved: @escaping () async -> Void
+        onSaved: @escaping (TrayCollection) async -> Void
     ) {
         self.title = title
         self.tray = tray
@@ -283,12 +454,13 @@ struct CollectionEditor: View {
         isSaving = true
         defer { isSaving = false }
         do {
+            let saved: TrayCollection
             if let collectionID {
-                _ = try await tray.renameCollection(collectionID, to: name)
+                saved = try await tray.renameCollection(collectionID, to: name)
             } else {
-                _ = try await tray.createCollection(named: name)
+                saved = try await tray.createCollection(named: name)
             }
-            await onSaved()
+            await onSaved(saved)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

@@ -230,6 +230,7 @@ struct TrayPDFDetailView: View {
     let item: TrayItem
     var collectionName: String? = nil
     let tray: Tray
+    var manageCollection: (() -> Void)? = nil
 
     @State private var loaded: LoadedTrayPDF?
     @State private var errorMessage: String?
@@ -242,7 +243,11 @@ struct TrayPDFDetailView: View {
                         PDFDocumentView(document: loaded.document)
                         Divider()
                         ScrollView {
-                            TrayDetailMetadata(item: item, collectionName: collectionName)
+                            TrayDetailMetadata(
+                                item: item,
+                                collectionName: collectionName,
+                                manageCollection: manageCollection
+                            )
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(16)
                         }

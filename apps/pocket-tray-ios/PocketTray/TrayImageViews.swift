@@ -195,6 +195,7 @@ struct TrayImageDetailView: View {
     let item: TrayItem
     var collectionName: String? = nil
     let tray: Tray
+    var manageCollection: (() -> Void)? = nil
 
     @State private var loaded: LoadedTrayImage?
     @State private var errorMessage: String?
@@ -211,7 +212,11 @@ struct TrayImageDetailView: View {
                                 .frame(maxWidth: .infinity)
                                 .accessibilityLabel("Image: \(item.title ?? item.text)")
 
-                            TrayDetailMetadata(item: item, collectionName: collectionName)
+                            TrayDetailMetadata(
+                                item: item,
+                                collectionName: collectionName,
+                                manageCollection: manageCollection
+                            )
                         }
                         .padding(20)
                     }
