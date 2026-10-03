@@ -221,6 +221,14 @@ struct PocketTraySettingsView<TrashContent: View>: View {
         QuickCopyPreference.key,
         store: QuickCopyPreference.defaults
     ) private var quickCopyOnTap = false
+    @AppStorage(
+        SpotlightDiscoveryPreference.key,
+        store: SpotlightDiscoveryPreference.defaults
+    ) private var spotlightDiscoveryEnabled = false
+    @AppStorage(
+        SpotlightDiscoveryPreference.reconciliationPendingKey,
+        store: SpotlightDiscoveryPreference.defaults
+    ) private var spotlightReconciliationPending = false
     let tray: Tray
     let trashCount: Int
     @ViewBuilder let trashContent: () -> TrashContent
@@ -256,6 +264,20 @@ struct PocketTraySettingsView<TrashContent: View>: View {
                     Text("Use Pocket Tray actions from Shortcuts, Siri, Spotlight, the Action button, or Home Screen widgets.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Copy, then Paste", systemImage: "doc.on.doc")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Run Copy Saved Object, return to the destination app, then Paste. Or connect Get Saved Text to Copy to Clipboard in Shortcuts.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Share an Image or PDF", systemImage: "square.and.arrow.up")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Connect Get Saved Image or PDF to Share, Mail, Save File, or another action that accepts the file type.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Section("Storage") {
                     if let storageReport {
@@ -343,6 +365,19 @@ struct PocketTraySettingsView<TrashContent: View>: View {
                             .foregroundStyle(.red)
                             .accessibilityIdentifier("app-lock-setting-error")
                     }
+                    Toggle("Show Eligible Objects in Spotlight", isOn: $spotlightDiscoveryEnabled)
+                    Text("Off by default. When enabled, only nonsensitive objects appear in on-device system search. Turning on App Lock removes them from Spotlight.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if spotlightReconciliationPending {
+                        Label(
+                            "Spotlight update pending. Pocket Tray will retry when the app is active.",
+                            systemImage: "arrow.clockwise"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("spotlight-update-pending")
+                    }
                 }
             }
             .task {
@@ -395,7 +430,16 @@ struct PocketTraySettingsView<TrashContent: View>: View {
         isChangingSetting = true
         Task {
             await controller.setEnabled(isEnabled)
+            await synchronizeSpotlight()
             isChangingSetting = false
         }
+    }
+
+    private func synchronizeSpotlight() async {
+        await SavedObjectSpotlightRuntime.synchronize(
+            tray: tray,
+            clipboard: SystemTextClipboard(),
+            isEnabled: spotlightDiscoveryEnabled
+        )
     }
 }

@@ -181,6 +181,30 @@ struct PocketTrayAppShortcuts: AppShortcutsProvider {
             systemImageName: "doc.on.doc"
         )
         AppShortcut(
+            intent: FindSavedObjectsIntent(),
+            phrases: ["Find saved objects in \(.applicationName)"],
+            shortTitle: "Find Saved Objects",
+            systemImageName: "magnifyingglass"
+        )
+        AppShortcut(
+            intent: GetSavedTextIntent(),
+            phrases: ["Get text from \(\.$object) with \(.applicationName)"],
+            shortTitle: "Get Saved Text",
+            systemImageName: "text.quote"
+        )
+        AppShortcut(
+            intent: GetSavedURLIntent(),
+            phrases: ["Get link from \(\.$object) with \(.applicationName)"],
+            shortTitle: "Get Saved Link",
+            systemImageName: "link"
+        )
+        AppShortcut(
+            intent: GetSavedFileIntent(),
+            phrases: ["Get file from \(\.$object) with \(.applicationName)"],
+            shortTitle: "Get Saved File",
+            systemImageName: "doc"
+        )
+        AppShortcut(
             intent: OpenSavedObjectIntent(),
             phrases: [
                 "Open \(\.$target) in \(.applicationName)",
