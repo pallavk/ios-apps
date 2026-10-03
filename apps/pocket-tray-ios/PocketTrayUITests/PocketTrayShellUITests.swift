@@ -81,6 +81,20 @@ final class PocketTrayShellUITests: XCTestCase {
         XCTAssertEqual(toggle.value as? String, "0")
     }
 
+    func testSettingsExplainsCrossAppShortcutRecipes() {
+        let app = launchApp()
+
+        app.buttons["Settings"].tap()
+
+        XCTAssertTrue(app.staticTexts["Copy, then Paste"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Share an Image or PDF"].exists)
+        app.swipeUp()
+        app.swipeUp()
+        let spotlight = app.switches["Show Eligible Objects in Spotlight"]
+        XCTAssertTrue(spotlight.waitForExistence(timeout: 3))
+        XCTAssertEqual(spotlight.value as? String, "0")
+    }
+
     func testPinActionOffersUndo() {
         let app = launchApp(withContent: true)
 

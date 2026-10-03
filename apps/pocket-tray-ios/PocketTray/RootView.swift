@@ -102,6 +102,10 @@ struct RootView: View {
         store: QuickCopyPreference.defaults
     ) private var quickCopyOnTap = false
     @AppStorage("PocketTray.searchHistory") private var searchHistoryStorage = ""
+    @AppStorage(
+        SpotlightDiscoveryPreference.key,
+        store: SpotlightDiscoveryPreference.defaults
+    ) private var spotlightDiscoveryEnabled = false
 
     let tray: Tray
     private let clipboard: any TextClipboard
@@ -212,6 +216,9 @@ struct RootView: View {
         .onChange(of: selectedPhoto) { _, selection in
             guard let selection else { return }
             Task { await loadSelectedPhoto(selection) }
+        }
+        .onChange(of: spotlightDiscoveryEnabled) { _, _ in
+            Task { await synchronizeSpotlight() }
         }
         .photosPicker(
             isPresented: $isPresentingPhotoPicker,
@@ -886,11 +893,12 @@ struct RootView: View {
         else { return }
         var reorderedIDs = originalIDs
         reorderedIDs.swapAt(source, source + offset)
+        let finalReorderedIDs = reorderedIDs
         perform(
             String(localized: "Collection moved"),
             feedbackAction: .undo(.restoreCollectionOrder(originalIDs))
         ) {
-            try await tray.reorderCollections(reorderedIDs)
+            try await tray.reorderCollections(finalReorderedIDs)
         }
     }
 
@@ -1006,9 +1014,18 @@ struct RootView: View {
             if safeHistory != recentSearches {
                 searchHistoryStorage = safeHistory.joined(separator: "\n")
             }
+            await synchronizeSpotlight()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func synchronizeSpotlight() async {
+        await SavedObjectSpotlightRuntime.synchronize(
+            tray: tray,
+            clipboard: clipboard,
+            isEnabled: spotlightDiscoveryEnabled
+        )
     }
 
     private func refreshClipboardAvailability() async {

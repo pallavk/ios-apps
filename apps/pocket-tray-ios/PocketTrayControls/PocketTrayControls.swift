@@ -6,6 +6,31 @@ import WidgetKit
 struct PocketTrayControlsBundle: WidgetBundle {
     var body: some Widget {
         CaptureClipboardControl()
+        OpenPocketTrayControl()
+    }
+}
+
+struct OpenPocketTrayControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "com.pallavk.PocketTray.open") {
+            ControlWidgetButton(action: OpenPocketTrayIntent()) {
+                Label("Open Pocket Tray", systemImage: "tray.full")
+            }
+        }
+        .displayName("Open Pocket Tray")
+        .description("Open your tray to find and reuse a saved object.")
+    }
+}
+
+struct OpenPocketTrayIntent: AppIntent {
+    static let title: LocalizedStringResource = "Open Pocket Tray"
+    static let description = IntentDescription(
+        "Open Pocket Tray to find, copy, or share a saved object."
+    )
+    static let openAppWhenRun = true
+
+    func perform() async throws -> some IntentResult {
+        .result()
     }
 }
 
